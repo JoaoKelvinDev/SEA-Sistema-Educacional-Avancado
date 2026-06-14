@@ -68,7 +68,7 @@ export default async function handler(req: any, res: any) {
       return res.status(502).json({ error: 'Erro ao chamar a IA' });
     }
 
-    const data = await response.json();
+    const data = await response.json() as any;
     const textBlock = data.content?.find((b: any) => b.type === 'text');
     const rawText: string = textBlock?.text ?? '';
 
