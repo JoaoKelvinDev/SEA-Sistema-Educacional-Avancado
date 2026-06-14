@@ -51,7 +51,7 @@ export default async function handler(req: any, res: any) {
       return res.status(502).json({ error: 'Erro ao transcrever áudio' });
     }
 
-    const data = await response.json();
+    const data = await response.json() as any;
     const text: string = (data.text || '').trim();
 
     if (!text) {
