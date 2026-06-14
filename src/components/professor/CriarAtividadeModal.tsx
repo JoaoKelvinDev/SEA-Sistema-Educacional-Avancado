@@ -36,49 +36,59 @@ const CriarAtividadeModal = ({ isOpen, onClose }: CriarAtividadeModalProps) => {
     questoes: [] as Questao[],
   });
 
-  const handleStartRecording = () => {
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-
-    if (!SpeechRecognition) {
-      toast.error('Seu navegador não suporta reconhecimento de voz. Tente usar o Chrome.');
+  const handleStartRecording = async () => {
+    if (!navigator.mediaDevices || !window.MediaRecorder) {
+      toast.error('Seu navegador não suporta gravação de áudio.');
       return;
     }
 
-    const recognition = new SpeechRecognition();
-    recognition.lang = 'pt-BR';
-    recognition.continuous = true;
-    recognition.interimResults = false;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
-    let transcript = '';
+      // Escolhe um formato suportado pelo navegador
+      const mimeCandidates = [
+        'audio/webm;codecs=opus',
+        'audio/webm',
+        'audio/mp4',
+        'audio/ogg;codecs=opus',
+      ];
+      const mimeType = mimeCandidates.find((m) => MediaRecorder.isTypeSupported(m)) || '';
 
-    recognition.onresult = (event: any) => {
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        transcript += event.results[i][0].transcript + ' ';
+      const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+
+      recorder.start();
+      (window as any).__sea_recorder = recorder;
+      (window as any).__sea_audioMime = recorder.mimeType || mimeType || 'audio/webm';
+
+      setIsRecording(true);
+      toast.success('Gravação iniciada! Fale o conteúdo da atividade.');
+
+      const interval = setInterval(() => {
+        setRecordingTime((prev) => prev + 1);
+      }, 1000);
+
+      (window as any).recordingInterval = interval;
+    } catch (err: any) {
+      console.error('Erro ao acessar microfone:', err);
+      if (err.name === 'NotAllowedError') {
+        toast.error('Permissão de microfone negada. Habilite o acesso ao microfone para o site nas configurações do navegador.');
+      } else {
+        toast.error('Não foi possível acessar o microfone.');
       }
-    };
+    }
+  };
 
-    recognition.onerror = (event: any) => {
-      console.error('Erro no reconhecimento de voz:', event.error);
-      toast.error('Erro ao capturar áudio: ' + event.error);
-      setIsRecording(false);
-    };
-
-    recognition.onend = () => {
-      (window as any).__sea_transcript = transcript;
-    };
-
-    recognition.start();
-    (window as any).__sea_recognition = recognition;
-    (window as any).__sea_transcript = '';
-
-    setIsRecording(true);
-    toast.success('Gravação iniciada! Fale o conteúdo da atividade.');
-
-    const interval = setInterval(() => {
-      setRecordingTime((prev) => prev + 1);
-    }, 1000);
-
-    (window as any).recordingInterval = interval;
+  const blobToBase64 = (blob: Blob): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const result = reader.result as string;
+        // remove prefixo "data:audio/webm;base64,"
+        resolve(result.split(',')[1] || '');
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
   };
 
   const handleStopRecording = async () => {
@@ -88,27 +98,59 @@ const CriarAtividadeModal = ({ isOpen, onClose }: CriarAtividadeModalProps) => {
     if ((window as any).recordingInterval) {
       clearInterval((window as any).recordingInterval);
     }
-
-    const recognition = (window as any).__sea_recognition;
-    if (recognition) {
-      recognition.stop();
-    }
-
-    toast.info('Processando áudio com IA...');
-
-    // Pequeno delay para garantir que o evento onend já tenha rodado
-    await new Promise((r) => setTimeout(r, 500));
-
-    const transcricao: string = ((window as any).__sea_transcript || '').trim();
     setRecordingTime(0);
 
-    if (!transcricao) {
+    const recorder: MediaRecorder | undefined = (window as any).__sea_recorder;
+    if (!recorder) {
       setIsProcessing(false);
-      toast.error('Não foi possível capturar áudio. Tente novamente falando mais claramente.');
+      toast.error('Erro interno: gravador não encontrado.');
       return;
     }
 
+    const chunks: BlobPart[] = [];
+    recorder.ondataavailable = (e) => {
+      if (e.data && e.data.size > 0) chunks.push(e.data);
+    };
+
+    const stopPromise = new Promise<void>((resolve) => {
+      recorder.onstop = () => {
+        recorder.stream.getTracks().forEach((track) => track.stop());
+        resolve();
+      };
+    });
+
+    recorder.stop();
+    await stopPromise;
+
+    const mimeType: string = (window as any).__sea_audioMime || 'audio/webm';
+    const audioBlob = new Blob(chunks, { type: mimeType });
+
+    if (audioBlob.size < 1000) {
+      setIsProcessing(false);
+      toast.error('Áudio muito curto. Grave novamente falando o conteúdo da atividade.');
+      return;
+    }
+
+    toast.info('Transcrevendo áudio...');
+
     try {
+      const base64Audio = await blobToBase64(audioBlob);
+
+      const transcribeResponse = await fetch('/api/transcrever-audio', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ audio: base64Audio, mimeType }),
+      });
+
+      if (!transcribeResponse.ok) {
+        const err = await transcribeResponse.json().catch(() => ({}));
+        throw new Error(err.error || 'Erro ao transcrever áudio');
+      }
+
+      const { text: transcricao } = await transcribeResponse.json();
+
+      toast.info('Gerando atividade com IA...');
+
       const response = await fetch('/api/gerar-atividade', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -143,7 +185,7 @@ const CriarAtividadeModal = ({ isOpen, onClose }: CriarAtividadeModalProps) => {
       toast.success('Atividade gerada com sucesso! Revise antes de publicar.');
     } catch (err: any) {
       console.error(err);
-      toast.error(err.message || 'Erro ao gerar atividade com IA');
+      toast.error(err.message || 'Erro ao processar áudio com IA');
     } finally {
       setIsProcessing(false);
     }
