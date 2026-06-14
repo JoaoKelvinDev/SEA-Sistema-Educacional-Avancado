@@ -144,7 +144,8 @@ const CriarAtividadeModal = ({ isOpen, onClose }: CriarAtividadeModalProps) => {
 
       if (!transcribeResponse.ok) {
         const err = await transcribeResponse.json().catch(() => ({}));
-        throw new Error(err.error || 'Erro ao transcrever áudio');
+        console.error('Detalhe do erro de transcrição:', err);
+        throw new Error(err.detail ? `${err.error}: ${err.detail}` : (err.error || 'Erro ao transcrever áudio'));
       }
 
       const { text: transcricao } = await transcribeResponse.json();

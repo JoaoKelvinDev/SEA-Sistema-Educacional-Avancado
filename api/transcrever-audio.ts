@@ -1,11 +1,3 @@
-export const config = {
-  api: {
-    bodyParser: {
-      sizeLimit: '10mb',
-    },
-  },
-};
-
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Método não permitido' });
@@ -17,9 +9,9 @@ export default async function handler(req: any, res: any) {
     return res.status(400).json({ error: 'Áudio não enviado' });
   }
 
-  const apiKey = process.env.OPENAI_API_KEY;
+  const apiKey = process.env.DEEPGRAM_API_KEY;
   if (!apiKey) {
-    return res.status(500).json({ error: 'OPENAI_API_KEY não configurada no servidor' });
+    return res.status(500).json({ error: 'DEEPGRAM_API_KEY não configurada no servidor' });
   }
 
   try {
@@ -29,30 +21,34 @@ export default async function handler(req: any, res: any) {
       return res.status(400).json({ error: 'Áudio muito curto ou vazio' });
     }
 
-    const extension = (mimeType || 'audio/webm').includes('mp4') ? 'mp4' : 'webm';
-    const audioBlob = new Blob([buffer], { type: mimeType || 'audio/webm' });
+    const contentType = mimeType || 'audio/webm';
 
-    const formData = new FormData();
-    formData.append('file', audioBlob, `audio.${extension}`);
-    formData.append('model', 'whisper-1');
-    formData.append('language', 'pt');
+    const params = new URLSearchParams({
+      model: 'nova-3',
+      language: 'pt-BR',
+      smart_format: 'true',
+      punctuate: 'true',
+    });
 
-    const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+    const response = await fetch(`https://api.deepgram.com/v1/listen?${params.toString()}`, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${apiKey}`,
+        Authorization: `Token ${apiKey}`,
+        'Content-Type': contentType,
       },
-      body: formData,
+      body: buffer,
     });
 
     if (!response.ok) {
       const errText = await response.text();
-      console.error('Erro Whisper API:', errText);
-      return res.status(502).json({ error: 'Erro ao transcrever áudio' });
+      console.error('Erro Deepgram API:', response.status, errText);
+      return res.status(502).json({ error: 'Erro ao transcrever áudio', detail: errText, status: response.status });
     }
 
-    const data = await response.json() as any;
-    const text: string = (data.text || '').trim();
+    const data = (await response.json()) as any;
+    const text: string = (
+      data?.results?.channels?.[0]?.alternatives?.[0]?.transcript || ''
+    ).trim();
 
     if (!text) {
       return res.status(422).json({ error: 'Não foi possível identificar fala no áudio enviado' });
