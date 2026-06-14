@@ -36,43 +36,46 @@ export default async function handler(req: any, res: any) {
     return res.status(400).json({ error: 'Transcrição vazia ou muito curta' });
   }
 
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
-    return res.status(500).json({ error: 'ANTHROPIC_API_KEY não configurada no servidor' });
+    return res.status(500).json({ error: 'GEMINI_API_KEY não configurada no servidor' });
   }
 
   try {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 4000,
-        system: SYSTEM_PROMPT,
-        messages: [
-          {
-            role: 'user',
-            content: `Transcrição do professor:\n\n"${transcricao}"`,
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          systemInstruction: {
+            parts: [{ text: SYSTEM_PROMPT }],
           },
-        ],
-      }),
-    });
+          contents: [
+            {
+              role: 'user',
+              parts: [{ text: `Transcrição do professor:\n\n"${transcricao}"` }],
+            },
+          ],
+          generationConfig: {
+            responseMimeType: 'application/json',
+            temperature: 0.7,
+          },
+        }),
+      }
+    );
 
     if (!response.ok) {
       const errText = await response.text();
-      console.error('Erro Anthropic API:', errText);
-      return res.status(502).json({ error: 'Erro ao chamar a IA' });
+      console.error('Erro Gemini API:', response.status, errText);
+      return res.status(502).json({ error: 'Erro ao chamar a IA', detail: errText, status: response.status });
     }
 
-    const data = (await response.json()) as { content?: Array<{ type: string; text?: string }> };
-    const textBlock = data.content?.find((b) => b.type === 'text');
-    const rawText: string = textBlock?.text ?? '';
+    const data = (await response.json()) as any;
+    const rawText: string = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
 
-    // Remove possíveis blocos de markdown ```json ... ```
     const cleaned = rawText.replace(/```json\s*|\s*```/g, '').trim();
 
     let atividadeGerada;

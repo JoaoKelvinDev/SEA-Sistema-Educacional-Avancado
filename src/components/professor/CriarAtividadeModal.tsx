@@ -160,7 +160,8 @@ const CriarAtividadeModal = ({ isOpen, onClose }: CriarAtividadeModalProps) => {
 
       if (!response.ok) {
         const err = await response.json().catch(() => ({}));
-        throw new Error(err.error || 'Erro ao gerar atividade');
+        console.error('Detalhe do erro de geração:', err);
+        throw new Error(err.detail ? `${err.error}: ${err.detail}` : (err.error || 'Erro ao gerar atividade'));
       }
 
       const atividadeGerada = await response.json();
