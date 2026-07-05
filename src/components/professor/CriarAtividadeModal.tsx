@@ -240,7 +240,7 @@ const CriarAtividadeModal = ({ isOpen, onClose }: CriarAtividadeModalProps) => {
     setFormData({ ...formData, questoes: updatedQuestoes });
   };
 
-  const handlePublicar = () => {
+const handlePublicar = async () => {
     if (!user) return;
 
     if (!formData.titulo || !formData.materia || formData.turmas.length === 0 || formData.questoes.length === 0) {
@@ -248,8 +248,7 @@ const CriarAtividadeModal = ({ isOpen, onClose }: CriarAtividadeModalProps) => {
       return;
     }
 
-    const novaAtividade: Atividade = {
-      id: `ativ-${Date.now()}`,
+    await addAtividade({
       titulo: formData.titulo,
       descricao: formData.descricao,
       professorId: user.id,
@@ -257,14 +256,9 @@ const CriarAtividadeModal = ({ isOpen, onClose }: CriarAtividadeModalProps) => {
       materia: formData.materia,
       turmas: formData.turmas,
       questoes: formData.questoes,
-      dataCriacao: new Date().toISOString().split('T')[0],
       publicada: true
-    };
+    });
 
-    addAtividade(novaAtividade);
-    toast.success('Atividade publicada com sucesso! 🎉');
-    
-    // Reset e fechar
     setFormData({
       titulo: '',
       descricao: '',
@@ -276,11 +270,10 @@ const CriarAtividadeModal = ({ isOpen, onClose }: CriarAtividadeModalProps) => {
     onClose();
   };
 
-  const handleRascunho = () => {
+  const handleRascunho = async () => {
     if (!user) return;
 
-    const novaAtividade: Atividade = {
-      id: `ativ-${Date.now()}`,
+    await addAtividade({
       titulo: formData.titulo || 'Rascunho sem título',
       descricao: formData.descricao,
       professorId: user.id,
@@ -288,13 +281,9 @@ const CriarAtividadeModal = ({ isOpen, onClose }: CriarAtividadeModalProps) => {
       materia: formData.materia || 'Não definida',
       turmas: formData.turmas,
       questoes: formData.questoes,
-      dataCriacao: new Date().toISOString().split('T')[0],
       publicada: false
-    };
+    });
 
-    addAtividade(novaAtividade);
-    toast.success('Rascunho salvo!');
-    
     setFormData({
       titulo: '',
       descricao: '',
