@@ -38,7 +38,7 @@ const Login = () => {
     setIsLoggingIn(false);
   };
 
-  const handleSignup = async (e: React.FormEvent) => {
+const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!email || !password || !name || !turma) {
@@ -47,13 +47,13 @@ const Login = () => {
     }
 
     setIsLoggingIn(true);
-    const success = await signup(email, password, name, turma);
+    const success = await signup(email, password, name, 'aluno', turma);
     
     if (success) {
-      toast.success('Cadastro realizado com sucesso!');
-      navigate('/dashboard');
+      toast.success('Cadastro realizado! Verifique seu email para confirmar a conta.');
+      setIsSignupMode(false);
     } else {
-      toast.error('Email já cadastrado');
+      toast.error('Erro ao cadastrar. Tente novamente.');
     }
     setIsLoggingIn(false);
   };
