@@ -67,19 +67,16 @@ const ResolverAtividadeCard = ({ atividade, alunoId, onClose }: ResolverAtividad
     return pontuacao;
   };
 
-  const handleComplete = () => {
+const handleComplete = async () => {
     const pontuacao = calcularPontuacao();
-    const novaResposta = {
-      id: `resp-${Date.now()}`,
+
+    await addResposta({
       atividadeId: atividade.id,
       alunoId: alunoId,
       respostas: respostas,
       pontuacao: pontuacao,
-      dataEnvio: new Date().toISOString(),
       feedback: `Você obteve ${pontuacao} pontos nesta atividade!`
-    };
-
-    addResposta(novaResposta);
+    });
     
     toast.success(`Atividade concluída! Você ganhou ${pontuacao} pontos! 🎉`, {
       duration: 5000,
