@@ -12,6 +12,7 @@ const GerenciarProfessores = () => {
   const { professores, updateUser, deleteUser } = useData();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -30,45 +31,55 @@ const GerenciarProfessores = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (editingId) {
       await updateUser(editingId, { name: formData.name });
       toast.success('Professor atualizado!');
-    } else {
-      if (!formData.email || !formData.password || !formData.name) {
-        toast.error('Preencha todos os campos!');
+      resetForm();
+      setIsDialogOpen(false);
+      return;
+    }
+
+    if (!formData.email || !formData.password || !formData.name) {
+      toast.error('Preencha todos os campos!');
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    try {
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+
+      if (sessionError || !sessionData.session) {
+        toast.error('Você precisa estar autenticado para criar um professor.');
         return;
       }
 
-      // Chamar Edge Function de forma segura
-      const response = await fetch(
-        'https://mbyyifijehebsgezamqw.supabase.co/functions/v1/create-professor',
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            email: formData.email,
-            password: formData.password,
-            name: formData.name
-          })
-        }
-      );
+      const { error } = await supabase.functions.invoke('create-professor', {
+        body: {
+          email: formData.email,
+          password: formData.password,
+          name: formData.name,
+        },
+      });
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        toast.error(`Erro: ${data.error}`);
-        return;
+      if (error) {
+        throw new Error(error.message || 'Não foi possível criar o professor.');
       }
 
       toast.success(`Professor ${formData.name} cadastrado!`);
+      resetForm();
+      setIsDialogOpen(false);
+    } catch (error) {
+      console.error('Erro ao criar professor:', error);
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : 'Erro ao criar professor. Verifique a conexão e a função no Supabase.'
+      );
+    } finally {
+      setIsSubmitting(false);
     }
-    
-    resetForm();
-    setIsDialogOpen(false);
   };
 
   const handleEdit = (prof: any) => {
@@ -123,8 +134,8 @@ const GerenciarProfessores = () => {
                   onChange={handleInputChange}
                 />
               )}
-              <Button type="submit" className="w-full">
-                {editingId ? 'Atualizar' : 'Cadastrar'}
+              <Button type="submit" className="w-full" disabled={isSubmitting}>
+                {isSubmitting ? 'Salvando...' : editingId ? 'Atualizar' : 'Cadastrar'}
               </Button>
             </form>
           </DialogContent>
