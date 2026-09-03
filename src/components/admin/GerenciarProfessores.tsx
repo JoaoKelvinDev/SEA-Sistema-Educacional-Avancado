@@ -55,7 +55,7 @@ const GerenciarProfessores = () => {
         return;
       }
 
-      const { error } = await supabase.functions.invoke('create-professor', {
+      const { data, error } = await supabase.functions.invoke('smart-action', {
         body: {
           email: formData.email,
           password: formData.password,
@@ -65,6 +65,10 @@ const GerenciarProfessores = () => {
 
       if (error) {
         throw new Error(error.message || 'Não foi possível criar o professor.');
+      }
+
+      if (!data?.success) {
+        throw new Error(data?.error || 'Não foi possível criar o professor.');
       }
 
       toast.success(`Professor ${formData.name} cadastrado!`);
