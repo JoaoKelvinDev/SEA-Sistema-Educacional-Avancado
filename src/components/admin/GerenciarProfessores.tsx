@@ -1,21 +1,17 @@
 import { useState } from 'react';
 import { useData } from '@/contexts/DataContext';
-import { User } from '@/types';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { UserPlus, Pencil, Trash2, KeyRound } from 'lucide-react';
-import { useToast } from '@/hooks/use-toast';
+import { toast } from 'sonner';
+import { Trash2, Edit2, Plus } from 'lucide-react';
 
-export default function GerenciarProfessores() {
-  const { professores, addProfessor, updateUser, deleteUser, resetUserPassword } = useData();
-  const { toast } = useToast();
+const GerenciarProfessores = () => {
+  const { professores, updateUser, deleteUser } = useData();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -27,175 +23,142 @@ export default function GerenciarProfessores() {
     setEditingId(null);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (editingId) {
-      updateUser(editingId, { name: formData.name, email: formData.email });
-      toast({
-        title: "Professor atualizado",
-        description: "Dados do professor foram atualizados com sucesso.",
-      });
+      // Atualizar professor existente
+      await updateUser(editingId, { name: formData.name });
+      toast.success('Professor atualizado com sucesso!');
     } else {
-      const newProfessor: User = {
-        id: `prof-${Date.now()}`,
+      // Criar novo professor via Supabase Auth
+      if (!formData.email || !formData.password || !formData.name) {
+        toast.error('Preencha todos os campos!');
+        return;
+      }
+
+      const { data, error } = await supabase.auth.admin.createUser({
         email: formData.email,
-        name: formData.name,
-        role: 'professor',
-      };
-      addProfessor(newProfessor);
-      toast({
-        title: "Professor cadastrado",
-        description: `${formData.name} foi adicionado ao sistema.`,
+        password: formData.password,
+        user_metadata: { 
+          name: formData.name, 
+          role: 'professor' 
+        },
+        email_confirm: true
       });
+
+      if (error) {
+        toast.error(`Erro: ${error.message}`);
+        return;
+      }
+
+      toast.success(`Professor ${formData.name} cadastrado com sucesso!`);
     }
     
     resetForm();
     setIsDialogOpen(false);
   };
 
-  const handleEdit = (prof: User) => {
-    setFormData({ name: prof.name, email: prof.email, password: '' });
+  const handleEdit = (prof: any) => {
     setEditingId(prof.id);
+    setFormData({ name: prof.name, email: prof.email, password: '' });
     setIsDialogOpen(true);
   };
 
-  const handleDelete = (id: string, name: string) => {
-    if (confirm(`Tem certeza que deseja remover ${name}?`)) {
-      deleteUser(id);
-      toast({
-        title: "Professor removido",
-        description: `${name} foi removido do sistema.`,
-        variant: "destructive"
-      });
-    }
-  };
-
-  const handleResetPassword = (id: string, name: string) => {
-    const newPassword = prompt(`Digite a nova senha para ${name}:`);
-    if (newPassword) {
-      resetUserPassword(id, newPassword);
-      toast({
-        title: "Senha resetada",
-        description: `Senha de ${name} foi alterada com sucesso.`,
-      });
+  const handleDelete = async (id: string) => {
+    if (confirm('Tem certeza que deseja deletar este professor?')) {
+      await deleteUser(id);
+      toast.success('Professor deletado!');
     }
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <div>
-            <CardTitle>Gerenciar Professores</CardTitle>
-            <CardDescription>Adicione, edite ou remova professores do sistema</CardDescription>
-          </div>
-          <Dialog open={isDialogOpen} onOpenChange={(open) => {
-            setIsDialogOpen(open);
-            if (!open) resetForm();
-          }}>
-            <DialogTrigger asChild>
-              <Button>
-                <UserPlus className="mr-2 h-4 w-4" />
-                Adicionar Professor
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h2 className="text-2xl font-bold">Gerenciar Professores</h2>
+        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+          <DialogTrigger asChild>
+            <Button onClick={() => resetForm()}>
+              <Plus className="w-4 h-4 mr-2" />
+              Adicionar Professor
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>{editingId ? 'Editar' : 'Novo'} Professor</DialogTitle>
+            </DialogHeader>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <Input
+                name="name"
+                placeholder="Nome completo"
+                value={formData.name}
+                onChange={handleInputChange}
+              />
+              <Input
+                name="email"
+                type="email"
+                placeholder="Email"
+                value={formData.email}
+                onChange={handleInputChange}
+                disabled={!!editingId}
+              />
+              {!editingId && (
+                <Input
+                  name="password"
+                  type="password"
+                  placeholder="Senha (mínimo 6 caracteres)"
+                  value={formData.password}
+                  onChange={handleInputChange}
+                />
+              )}
+              <Button type="submit" className="w-full">
+                {editingId ? 'Atualizar' : 'Cadastrar'}
               </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>{editingId ? 'Editar Professor' : 'Novo Professor'}</DialogTitle>
-                <DialogDescription>
-                  {editingId ? 'Atualize os dados do professor' : 'Preencha os dados do novo professor'}
-                </DialogDescription>
-              </DialogHeader>
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div>
-                  <Label htmlFor="name">Nome Completo</Label>
-                  <Input
-                    id="name"
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    required
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="email">Email</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    value={formData.email}
-                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                    required
-                  />
-                </div>
-                {!editingId && (
-                  <div>
-                    <Label htmlFor="password">Senha Inicial</Label>
-                    <Input
-                      id="password"
-                      type="password"
-                      value={formData.password}
-                      onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                      required
-                    />
-                  </div>
-                )}
-                <div className="flex gap-2 justify-end">
-                  <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
-                    Cancelar
-                  </Button>
-                  <Button type="submit">
-                    {editingId ? 'Atualizar' : 'Cadastrar'}
-                  </Button>
-                </div>
-              </form>
-            </DialogContent>
-          </Dialog>
-        </div>
-      </CardHeader>
-      <CardContent>
+            </form>
+          </DialogContent>
+        </Dialog>
+      </div>
+
+      <div className="border rounded-lg">
         <Table>
           <TableHeader>
             <TableRow>
               <TableHead>Nome</TableHead>
               <TableHead>Email</TableHead>
-              <TableHead className="text-right">Ações</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead>Ações</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {professores.map((prof) => (
+            {professores.map(prof => (
               <TableRow key={prof.id}>
-                <TableCell className="font-medium">{prof.name}</TableCell>
+                <TableCell>{prof.name}</TableCell>
                 <TableCell>{prof.email}</TableCell>
-                <TableCell className="text-right">
-                  <div className="flex gap-2 justify-end">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => handleEdit(prof)}
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => handleResetPassword(prof.id, prof.name)}
-                    >
-                      <KeyRound className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="destructive"
-                      onClick={() => handleDelete(prof.id, prof.name)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
+                <TableCell>
+                  <span className={`px-2 py-1 rounded text-sm ${prof.ativo ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                    {prof.ativo ? 'Ativo' : 'Inativo'}
+                  </span>
+                </TableCell>
+                <TableCell className="space-x-2">
+                  <Button variant="outline" size="sm" onClick={() => handleEdit(prof)}>
+                    <Edit2 className="w-4 h-4" />
+                  </Button>
+                  <Button variant="destructive" size="sm" onClick={() => handleDelete(prof.id)}>
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
                 </TableCell>
               </TableRow>
             ))}
           </TableBody>
         </Table>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
-}
+};
+
+export default GerenciarProfessores;
