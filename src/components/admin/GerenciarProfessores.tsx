@@ -32,32 +32,39 @@ const GerenciarProfessores = () => {
     e.preventDefault();
     
     if (editingId) {
-      // Atualizar professor existente
       await updateUser(editingId, { name: formData.name });
-      toast.success('Professor atualizado com sucesso!');
+      toast.success('Professor atualizado!');
     } else {
-      // Criar novo professor via Supabase Auth
       if (!formData.email || !formData.password || !formData.name) {
         toast.error('Preencha todos os campos!');
         return;
       }
 
-      const { data, error } = await supabase.auth.admin.createUser({
-        email: formData.email,
-        password: formData.password,
-        user_metadata: { 
-          name: formData.name, 
-          role: 'professor' 
-        },
-        email_confirm: true
-      });
+      // Chamar Edge Function de forma segura
+      const response = await fetch(
+        'https://mbyyifijehebsgezamqw.supabase.co/functions/v1/create-professor',
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            email: formData.email,
+            password: formData.password,
+            name: formData.name
+          })
+        }
+      );
 
-      if (error) {
-        toast.error(`Erro: ${error.message}`);
+      const data = await response.json();
+
+      if (!response.ok) {
+        toast.error(`Erro: ${data.error}`);
         return;
       }
 
-      toast.success(`Professor ${formData.name} cadastrado com sucesso!`);
+      toast.success(`Professor ${formData.name} cadastrado!`);
     }
     
     resetForm();
