@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -26,6 +26,7 @@ interface DesempenhoAlunosModalProps {
   isOpen: boolean;
   onClose: () => void;
   professorId?: string; // Se fornecido, filtra apenas atividades do professor
+  turmaInicial?: string;
 }
 
 interface AlunoStats {
@@ -48,22 +49,28 @@ interface TurmaStats {
   alunos: AlunoStats[];
 }
 
-const DesempenhoAlunosModal = ({ isOpen, onClose, professorId }: DesempenhoAlunosModalProps) => {
+const DesempenhoAlunosModal = ({ isOpen, onClose, professorId, turmaInicial }: DesempenhoAlunosModalProps) => {
   const { alunos, atividades, respostas, getRespostasByAluno, getAtividadesByAluno } = useData();
   const [turmaSelecionada, setTurmaSelecionada] = useState<TurmaStats | null>(null);
   const [alunoSelecionado, setAlunoSelecionado] = useState<AlunoStats | null>(null);
 
   // Filtrar atividades se for professor
-  const atividadesFiltradas = professorId 
+  const atividadesFiltradas = useMemo(() => professorId
     ? atividades.filter(a => a.professorId === professorId && a.publicada)
-    : atividades.filter(a => a.publicada);
+    : atividades.filter(a => a.publicada), [atividades, professorId]);
 
-  // Obter lista de turmas únicas
-  const turmasUnicas = Array.from(new Set(alunos.map(a => a.turma).filter(Boolean))) as string[];
+  // As turmas do relatório devem pertencer às atividades publicadas no escopo atual.
+  const turmasUnicas = useMemo(
+    () => Array.from(new Set(atividadesFiltradas.flatMap(a => a.turmas))),
+    [atividadesFiltradas],
+  );
 
   // Calcular estatísticas de cada aluno
-  const calcularAlunoStats = (aluno: User): AlunoStats => {
-    const respostasAluno = getRespostasByAluno(aluno.id);
+  const calcularAlunoStats = useCallback((aluno: User): AlunoStats => {
+    const respostasAluno = getRespostasByAluno(aluno.id).filter(resposta => {
+      const atividade = atividadesFiltradas.find(a => a.id === resposta.atividadeId);
+      return Boolean(atividade);
+    });
     const atividadesDisponiveis = aluno.turma 
       ? atividadesFiltradas.filter(a => a.turmas.includes(aluno.turma!))
       : [];
@@ -71,8 +78,8 @@ const DesempenhoAlunosModal = ({ isOpen, onClose, professorId }: DesempenhoAluno
     const desempenhoPorMateria: { [materia: string]: { pontos: number; total: number; media: number } } = {};
 
     respostasAluno.forEach(resposta => {
-      const atividade = atividades.find(a => a.id === resposta.atividadeId);
-      if (!atividade || (professorId && atividade.professorId !== professorId)) return;
+      const atividade = atividadesFiltradas.find(a => a.id === resposta.atividadeId);
+      if (!atividade) return;
 
       const materia = atividade.materia;
       if (!desempenhoPorMateria[materia]) {
@@ -92,7 +99,7 @@ const DesempenhoAlunosModal = ({ isOpen, onClose, professorId }: DesempenhoAluno
 
     const totalPontos = respostasAluno.reduce((acc, r) => acc + (r.pontuacao || 0), 0);
     const totalPossivel = respostasAluno.reduce((acc, r) => {
-      const ativ = atividades.find(a => a.id === r.atividadeId);
+      const ativ = atividadesFiltradas.find(a => a.id === r.atividadeId);
       return acc + (ativ?.questoes.reduce((sum, q) => sum + q.pontos, 0) || 0);
     }, 0);
 
@@ -105,10 +112,10 @@ const DesempenhoAlunosModal = ({ isOpen, onClose, professorId }: DesempenhoAluno
       desempenhoPorMateria,
       respostas: respostasAluno
     };
-  };
+  }, [atividadesFiltradas, getRespostasByAluno]);
 
   // Calcular estatísticas por turma
-  const turmasStats: TurmaStats[] = turmasUnicas.map(turma => {
+  const turmasStats = useMemo<TurmaStats[]>(() => turmasUnicas.map(turma => {
     const alunosDaTurma = alunos.filter(a => a.turma === turma);
     const alunosStats = alunosDaTurma.map(calcularAlunoStats).sort((a, b) => b.mediaGeral - a.mediaGeral);
     
@@ -131,7 +138,20 @@ const DesempenhoAlunosModal = ({ isOpen, onClose, professorId }: DesempenhoAluno
       taxaConclusao,
       alunos: alunosStats
     };
-  }).sort((a, b) => b.mediaGeral - a.mediaGeral);
+  }).sort((a, b) => b.mediaGeral - a.mediaGeral), [alunos, calcularAlunoStats, turmasUnicas]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setTurmaSelecionada(null);
+      setAlunoSelecionado(null);
+      return;
+    }
+
+    setAlunoSelecionado(null);
+    setTurmaSelecionada(
+      turmaInicial ? turmasStats.find(turma => turma.nome === turmaInicial) || null : null,
+    );
+  }, [isOpen, turmaInicial, turmasStats]);
 
   const renderListaTurmas = () => (
     <div className="space-y-4">

@@ -27,6 +27,7 @@ const DashboardProfessor = () => {
   const [showMinhasAtividades, setShowMinhasAtividades] = useState(false);
   const [showDesempenho, setShowDesempenho] = useState(false);
   const [showDesempenhoAlunos, setShowDesempenhoAlunos] = useState(false);
+  const [turmaInicialRelatorio, setTurmaInicialRelatorio] = useState<string | null>(null);
   const { user } = useAuth();
   const { getAtividadesByProfessor, getRespostasByAtividade, alunos } = useData();
 
@@ -210,11 +211,11 @@ const DashboardProfessor = () => {
                 {materias.length === 0 ? <p className="py-8 text-center text-[11px] text-[#8194b6]">Ainda não há respostas avaliadas por matéria.</p> : materias.map(({ materia, percentual }, index) => <div key={materia} className="mb-3 last:mb-0"><div className="mb-1 flex justify-between text-[10px] text-[#61779f]"><span className="flex items-center gap-2"><span className={`h-2 w-2 rounded-full ${coresMaterias[index]}`} />{materia}</span><strong className="text-[#21355e]">{percentual}%</strong></div><div className="h-1.5 rounded-full bg-[#edf2fa]"><div className={`h-full rounded-full ${coresMaterias[index]}`} style={{ width: `${percentual}%` }} /></div></div>)}
               </div>
             </div>
-            <Button variant="ghost" onClick={() => setShowDesempenhoAlunos(true)} className="mt-3 h-8 px-1 text-[11px] font-semibold text-blue-600 hover:bg-blue-50">Ver relatório completo <ArrowRight className="ml-1 h-3 w-3" /></Button>
+              <Button variant="ghost" onClick={() => { setTurmaInicialRelatorio(null); setShowDesempenhoAlunos(true); }} className="mt-3 h-8 px-1 text-[11px] font-semibold text-blue-600 hover:bg-blue-50">Ver relatório completo <ArrowRight className="ml-1 h-3 w-3" /></Button>
           </Card>
         </div>
 
-        <Card className="mt-4 rounded-lg border-[#dce8fb] bg-white p-4 shadow-none"><div className="mb-3 flex items-center justify-between"><div className="flex items-center gap-3"><div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 text-blue-600"><Users className="h-4 w-4" /></div><div><h3 className="text-sm font-bold text-[#122554]">Minhas Turmas</h3><p className="text-[11px] text-[#7185a9]">Acesse suas turmas e acompanhe o andamento das atividades.</p></div></div><Button variant="ghost" onClick={() => setShowDesempenhoAlunos(true)} className="h-7 px-1 text-[10px] font-semibold text-blue-600">Ver todas as turmas <ArrowRight className="ml-1 h-3 w-3" /></Button></div><div className="grid grid-cols-1 gap-3 md:grid-cols-3">{turmas.slice(0, 3).map((turma, index) => { const totalAlunosTurma = alunos.filter((aluno) => aluno.turma === turma).length; return <button key={turma} onClick={() => setShowDesempenhoAlunos(true)} className={`flex items-center gap-3 rounded-lg border border-[#dce8fb] p-3 text-left transition-shadow hover:shadow-sm ${index === 1 ? 'bg-violet-50/40' : index === 2 ? 'bg-emerald-50/40' : 'bg-blue-50/40'}`}><div className={`flex h-9 w-9 items-center justify-center rounded-lg ${index === 1 ? 'bg-violet-100 text-violet-600' : index === 2 ? 'bg-emerald-100 text-emerald-600' : 'bg-blue-100 text-blue-600'}`}><GraduationCap className="h-5 w-5" /></div><span className="min-w-0 flex-1"><strong className="block truncate text-xs text-[#21355e]">{turma}</strong><small className="text-[10px] text-[#8194b6]">{totalAlunosTurma} alunos</small></span><ChevronRight className="h-4 w-4 text-[#90a6cb]" /></button>; })}{turmas.length === 0 && <p className="col-span-3 py-4 text-center text-sm text-muted-foreground">Nenhuma turma vinculada às suas atividades.</p>}</div></Card>
+        <Card className="mt-4 rounded-lg border-[#dce8fb] bg-white p-4 shadow-none"><div className="mb-3 flex items-center justify-between"><div className="flex items-center gap-3"><div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 text-blue-600"><Users className="h-4 w-4" /></div><div><h3 className="text-sm font-bold text-[#122554]">Minhas Turmas</h3><p className="text-[11px] text-[#7185a9]">Acesse suas turmas e acompanhe o andamento das atividades.</p></div></div><Button variant="ghost" onClick={() => { setTurmaInicialRelatorio(null); setShowDesempenhoAlunos(true); }} className="h-7 px-1 text-[10px] font-semibold text-blue-600">Ver todas as turmas <ArrowRight className="ml-1 h-3 w-3" /></Button></div><div className="grid grid-cols-1 gap-3 md:grid-cols-3">{turmas.slice(0, 3).map((turma, index) => { const totalAlunosTurma = alunos.filter((aluno) => aluno.turma === turma).length; return <button key={turma} onClick={() => { setTurmaInicialRelatorio(turma); setShowDesempenhoAlunos(true); }} className={`flex items-center gap-3 rounded-lg border border-[#dce8fb] p-3 text-left transition-shadow hover:shadow-sm ${index === 1 ? 'bg-violet-50/40' : index === 2 ? 'bg-emerald-50/40' : 'bg-blue-50/40'}`}><div className={`flex h-9 w-9 items-center justify-center rounded-lg ${index === 1 ? 'bg-violet-100 text-violet-600' : index === 2 ? 'bg-emerald-100 text-emerald-600' : 'bg-blue-100 text-blue-600'}`}><GraduationCap className="h-5 w-5" /></div><span className="min-w-0 flex-1"><strong className="block truncate text-xs text-[#21355e]">{turma}</strong><small className="text-[10px] text-[#8194b6]">{totalAlunosTurma} alunos</small></span><ChevronRight className="h-4 w-4 text-[#90a6cb]" /></button>; })}{turmas.length === 0 && <p className="col-span-3 py-4 text-center text-sm text-muted-foreground">Nenhuma turma vinculada às suas atividades.</p>}</div></Card>
       </main>
 
       <CriarAtividadeModal
@@ -234,8 +235,9 @@ const DashboardProfessor = () => {
 
       <DesempenhoAlunosModal
         isOpen={showDesempenhoAlunos}
-        onClose={() => setShowDesempenhoAlunos(false)}
+        onClose={() => { setShowDesempenhoAlunos(false); setTurmaInicialRelatorio(null); }}
         professorId={user?.id}
+        turmaInicial={turmaInicialRelatorio || undefined}
       />
     </div>
   );

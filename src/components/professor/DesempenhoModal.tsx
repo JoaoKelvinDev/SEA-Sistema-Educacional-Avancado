@@ -17,7 +17,7 @@ const DesempenhoModal = ({ isOpen, onClose }: DesempenhoModalProps) => {
 
   const atividadesProfessor = user ? getAtividadesByProfessor(user.id) : [];
   const totalAtividades = atividadesProfessor.filter(a => a.publicada).length;
-  const totalRespostas = atividadesProfessor.reduce((acc, ativ) => 
+  const totalRespostas = atividadesProfessor.filter(a => a.publicada).reduce((acc, ativ) => 
     acc + getRespostasByAtividade(ativ.id).length, 0
   );
   const mediaRespostas = totalAtividades > 0 ? Math.round(totalRespostas / totalAtividades) : 0;
