@@ -31,38 +31,69 @@ const DashboardProfessor = () => {
   const { getAtividadesByProfessor, getRespostasByAtividade, alunos } = useData();
 
   const atividadesProfessor = user ? getAtividadesByProfessor(user.id) : [];
-  const totalRespostas = atividadesProfessor.reduce((acc, ativ) => 
+  const atividadesPublicadas = atividadesProfessor.filter((atividade) => atividade.publicada);
+  const turmas = [...new Set(atividadesProfessor.flatMap((atividade) => atividade.turmas))];
+  const alunosProfessor = alunos.filter((aluno) => aluno.turma && turmas.includes(aluno.turma));
+  const totalRespostas = atividadesPublicadas.reduce((acc, ativ) => 
     acc + getRespostasByAtividade(ativ.id).length, 0
   );
-  const turmas = [...new Set(atividadesProfessor.flatMap((atividade) => atividade.turmas))];
-  const taxaDesempenho = totalRespostas > 0
-    ? Math.round(
-        (atividadesProfessor.reduce((total, atividade) => {
-          const respostas = getRespostasByAtividade(atividade.id);
-          return total + respostas.reduce((sum, resposta) => sum + (resposta.pontuacao || 0), 0);
-        }, 0) / Math.max(totalRespostas, 1)) * 10,
-      )
-    : 87;
+  const totalPontos = atividadesPublicadas.reduce((total, atividade) => {
+    const respostas = getRespostasByAtividade(atividade.id);
+    return total + respostas.reduce((sum, resposta) => sum + (resposta.pontuacao || 0), 0);
+  }, 0);
+  const totalPontosPossiveis = atividadesPublicadas.reduce((total, atividade) => {
+    const pontosAtividade = atividade.questoes.reduce((sum, questao) => sum + questao.pontos, 0);
+    return total + getRespostasByAtividade(atividade.id).length * pontosAtividade;
+  }, 0);
+  const taxaDesempenho = totalPontosPossiveis > 0
+    ? Math.round((totalPontos / totalPontosPossiveis) * 100)
+    : 0;
+  const respostasEsperadas = atividadesPublicadas.reduce((total, atividade) => {
+    const alunosDaTurma = alunosProfessor.filter((aluno) =>
+      aluno.turma && atividade.turmas.includes(aluno.turma),
+    ).length;
+    return total + alunosDaTurma;
+  }, 0);
+  const taxaConclusao = respostasEsperadas > 0
+    ? Math.min(100, Math.round((totalRespostas / respostasEsperadas) * 100))
+    : 0;
+  const desempenhoPorMateria = atividadesPublicadas.reduce<Record<string, { pontos: number; possiveis: number }>>((acc, atividade) => {
+    const respostas = getRespostasByAtividade(atividade.id);
+    const pontosPossiveis = atividade.questoes.reduce((sum, questao) => sum + questao.pontos, 0);
+    const materia = acc[atividade.materia] || { pontos: 0, possiveis: 0 };
+    materia.pontos += respostas.reduce((sum, resposta) => sum + (resposta.pontuacao || 0), 0);
+    materia.possiveis += respostas.length * pontosPossiveis;
+    acc[atividade.materia] = materia;
+    return acc;
+  }, {});
+  const materias = Object.entries(desempenhoPorMateria)
+    .map(([materia, dados]) => ({
+      materia,
+      percentual: dados.possiveis > 0 ? Math.round((dados.pontos / dados.possiveis) * 100) : 0,
+    }))
+    .sort((a, b) => b.percentual - a.percentual)
+    .slice(0, 4);
+  const coresMaterias = ['bg-emerald-500', 'bg-blue-600', 'bg-violet-500', 'bg-amber-400'];
 
   const stats = [
     {
       title: 'Atividades Publicadas',
-      value: atividadesProfessor.filter(a => a.publicada).length.toString(),
-      detail: '+3 esta semana',
+      value: atividadesPublicadas.length.toString(),
+      detail: `${atividadesProfessor.length} criadas`,
       icon: FileText,
       iconClass: 'bg-blue-50 text-blue-600',
     },
     {
       title: 'Alunos',
-      value: alunos.length.toString(),
-      detail: '+2 esta semana',
+      value: alunosProfessor.length.toString(),
+      detail: `${totalRespostas} respostas`,
       icon: Users,
       iconClass: 'bg-indigo-50 text-indigo-600',
     },
     {
       title: 'Taxa de Conclusão',
-      value: `${taxaDesempenho}%`,
-      detail: '+8% este mês',
+      value: `${taxaConclusao}%`,
+      detail: `${respostasEsperadas} respostas esperadas`,
       icon: Target,
       iconClass: 'bg-emerald-50 text-emerald-600',
     },
@@ -75,7 +106,9 @@ const DashboardProfessor = () => {
     },
   ];
 
-  const atividadesRecentes = atividadesProfessor.slice(-3).reverse();
+  const atividadesRecentes = [...atividadesProfessor]
+    .sort((a, b) => new Date(b.dataCriacao).getTime() - new Date(a.dataCriacao).getTime())
+    .slice(0, 3);
 
   return (
     <div className="min-h-screen bg-[#f8faff]">
@@ -170,18 +203,18 @@ const DashboardProfessor = () => {
           </Card>
 
           <Card className="rounded-lg border-[#dce8fb] bg-white p-4 shadow-none">
-            <div className="mb-3 flex items-start justify-between"><div className="flex items-center gap-3"><div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 text-blue-600"><BarChart3 className="h-4 w-4" /></div><div><h3 className="text-sm font-bold text-[#122554]">Desempenho dos Alunos</h3><p className="text-[11px] text-[#7185a9]">Acompanhe o progresso e identifique pontos de atenção.</p></div></div><Button variant="outline" onClick={() => setShowDesempenho(true)} className="h-8 gap-1 border-[#dce8fb] px-2 text-[10px] text-[#61779f]">Últimos 30 dias <ChevronDown className="h-3 w-3" /></Button></div>
+            <div className="mb-3 flex items-start justify-between"><div className="flex items-center gap-3"><div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 text-blue-600"><BarChart3 className="h-4 w-4" /></div><div><h3 className="text-sm font-bold text-[#122554]">Desempenho dos Alunos</h3><p className="text-[11px] text-[#7185a9]">Acompanhe o progresso e identifique pontos de atenção.</p></div></div><Button variant="outline" onClick={() => setShowDesempenho(true)} className="h-8 gap-1 border-[#dce8fb] px-2 text-[10px] text-[#61779f]">Todas as atividades <ChevronDown className="h-3 w-3" /></Button></div>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-[145px_1fr]">
-              <div className="flex flex-col items-center justify-center rounded-lg border border-[#e0eafb] py-4"><div className="relative flex h-28 w-28 items-center justify-center rounded-full" style={{ background: `conic-gradient(#17b997 ${taxaDesempenho}%, #e7effb 0)` }}><div className="flex h-20 w-20 flex-col items-center justify-center rounded-full bg-white"><span className="text-xl font-bold text-[#122554]">{taxaDesempenho}%</span><span className="text-[9px] text-[#8194b6]">Taxa de Acerto Geral</span></div></div><span className="mt-2 text-[10px] text-emerald-500">↑ +8%</span></div>
+              <div className="flex flex-col items-center justify-center rounded-lg border border-[#e0eafb] py-4"><div className="relative flex h-28 w-28 items-center justify-center rounded-full" style={{ background: `conic-gradient(#17b997 ${taxaDesempenho}%, #e7effb 0)` }}><div className="flex h-20 w-20 flex-col items-center justify-center rounded-full bg-white"><span className="text-xl font-bold text-[#122554]">{taxaDesempenho}%</span><span className="text-[9px] text-[#8194b6]">Taxa de Acerto Geral</span></div></div><span className="mt-2 text-[10px] text-[#8194b6]">{totalRespostas} respostas avaliadas</span></div>
               <div className="rounded-lg border border-[#e0eafb] p-3">
-                {[['Matemática', '90%', 'bg-emerald-500'], ['Português', '84%', 'bg-blue-600'], ['Biologia', '81%', 'bg-violet-500'], ['História', '78%', 'bg-amber-400']].map(([materia, percentual, cor]) => <div key={materia} className="mb-3 last:mb-0"><div className="mb-1 flex justify-between text-[10px] text-[#61779f]"><span className="flex items-center gap-2"><span className={`h-2 w-2 rounded-full ${cor}`} />{materia}</span><strong className="text-[#21355e]">{percentual}</strong></div><div className="h-1.5 rounded-full bg-[#edf2fa]"><div className={`h-full rounded-full ${cor}`} style={{ width: percentual }} /></div></div>)}
+                {materias.length === 0 ? <p className="py-8 text-center text-[11px] text-[#8194b6]">Ainda não há respostas avaliadas por matéria.</p> : materias.map(({ materia, percentual }, index) => <div key={materia} className="mb-3 last:mb-0"><div className="mb-1 flex justify-between text-[10px] text-[#61779f]"><span className="flex items-center gap-2"><span className={`h-2 w-2 rounded-full ${coresMaterias[index]}`} />{materia}</span><strong className="text-[#21355e]">{percentual}%</strong></div><div className="h-1.5 rounded-full bg-[#edf2fa]"><div className={`h-full rounded-full ${coresMaterias[index]}`} style={{ width: `${percentual}%` }} /></div></div>)}
               </div>
             </div>
             <Button variant="ghost" onClick={() => setShowDesempenhoAlunos(true)} className="mt-3 h-8 px-1 text-[11px] font-semibold text-blue-600 hover:bg-blue-50">Ver relatório completo <ArrowRight className="ml-1 h-3 w-3" /></Button>
           </Card>
         </div>
 
-        <Card className="mt-4 rounded-lg border-[#dce8fb] bg-white p-4 shadow-none"><div className="mb-3 flex items-center justify-between"><div className="flex items-center gap-3"><div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 text-blue-600"><Users className="h-4 w-4" /></div><div><h3 className="text-sm font-bold text-[#122554]">Minhas Turmas</h3><p className="text-[11px] text-[#7185a9]">Acesse suas turmas e acompanhe o andamento das atividades.</p></div></div><Button variant="ghost" onClick={() => setShowDesempenhoAlunos(true)} className="h-7 px-1 text-[10px] font-semibold text-blue-600">Ver todas as turmas <ArrowRight className="ml-1 h-3 w-3" /></Button></div><div className="grid grid-cols-1 gap-3 md:grid-cols-3">{turmas.slice(0, 3).map((turma, index) => <button key={turma} onClick={() => setShowDesempenhoAlunos(true)} className={`flex items-center gap-3 rounded-lg border border-[#dce8fb] p-3 text-left transition-shadow hover:shadow-sm ${index === 1 ? 'bg-violet-50/40' : index === 2 ? 'bg-emerald-50/40' : 'bg-blue-50/40'}`}><div className={`flex h-9 w-9 items-center justify-center rounded-lg ${index === 1 ? 'bg-violet-100 text-violet-600' : index === 2 ? 'bg-emerald-100 text-emerald-600' : 'bg-blue-100 text-blue-600'}`}><GraduationCap className="h-5 w-5" /></div><span className="min-w-0 flex-1"><strong className="block truncate text-xs text-[#21355e]">{turma}</strong><small className="text-[10px] text-[#8194b6]">Alunos • Ensino Médio</small></span><ChevronRight className="h-4 w-4 text-[#90a6cb]" /></button>)}{turmas.length === 0 && <p className="col-span-3 py-4 text-center text-sm text-muted-foreground">Nenhuma turma vinculada às suas atividades.</p>}</div></Card>
+        <Card className="mt-4 rounded-lg border-[#dce8fb] bg-white p-4 shadow-none"><div className="mb-3 flex items-center justify-between"><div className="flex items-center gap-3"><div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 text-blue-600"><Users className="h-4 w-4" /></div><div><h3 className="text-sm font-bold text-[#122554]">Minhas Turmas</h3><p className="text-[11px] text-[#7185a9]">Acesse suas turmas e acompanhe o andamento das atividades.</p></div></div><Button variant="ghost" onClick={() => setShowDesempenhoAlunos(true)} className="h-7 px-1 text-[10px] font-semibold text-blue-600">Ver todas as turmas <ArrowRight className="ml-1 h-3 w-3" /></Button></div><div className="grid grid-cols-1 gap-3 md:grid-cols-3">{turmas.slice(0, 3).map((turma, index) => { const totalAlunosTurma = alunos.filter((aluno) => aluno.turma === turma).length; return <button key={turma} onClick={() => setShowDesempenhoAlunos(true)} className={`flex items-center gap-3 rounded-lg border border-[#dce8fb] p-3 text-left transition-shadow hover:shadow-sm ${index === 1 ? 'bg-violet-50/40' : index === 2 ? 'bg-emerald-50/40' : 'bg-blue-50/40'}`}><div className={`flex h-9 w-9 items-center justify-center rounded-lg ${index === 1 ? 'bg-violet-100 text-violet-600' : index === 2 ? 'bg-emerald-100 text-emerald-600' : 'bg-blue-100 text-blue-600'}`}><GraduationCap className="h-5 w-5" /></div><span className="min-w-0 flex-1"><strong className="block truncate text-xs text-[#21355e]">{turma}</strong><small className="text-[10px] text-[#8194b6]">{totalAlunosTurma} alunos</small></span><ChevronRight className="h-4 w-4 text-[#90a6cb]" /></button>; })}{turmas.length === 0 && <p className="col-span-3 py-4 text-center text-sm text-muted-foreground">Nenhuma turma vinculada às suas atividades.</p>}</div></Card>
       </main>
 
       <CriarAtividadeModal
