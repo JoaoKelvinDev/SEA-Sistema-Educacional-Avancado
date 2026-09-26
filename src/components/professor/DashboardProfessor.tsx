@@ -2,7 +2,19 @@ import { useState } from 'react';
 import Header from '@/components/shared/Header';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Mic, BookOpen, BarChart3, AlertCircle, Users } from 'lucide-react';
+import {
+  ArrowRight,
+  BarChart3,
+  BookOpen,
+  ChevronDown,
+  ChevronRight,
+  FileText,
+  GraduationCap,
+  Mic,
+  MoreVertical,
+  Target,
+  Users,
+} from 'lucide-react';
 import CriarAtividadeModal from './CriarAtividadeModal';
 import MinhasAtividadesModal from './MinhasAtividadesModal';
 import DesempenhoModal from './DesempenhoModal';
@@ -22,168 +34,154 @@ const DashboardProfessor = () => {
   const totalRespostas = atividadesProfessor.reduce((acc, ativ) => 
     acc + getRespostasByAtividade(ativ.id).length, 0
   );
+  const turmas = [...new Set(atividadesProfessor.flatMap((atividade) => atividade.turmas))];
+  const taxaDesempenho = totalRespostas > 0
+    ? Math.round(
+        (atividadesProfessor.reduce((total, atividade) => {
+          const respostas = getRespostasByAtividade(atividade.id);
+          return total + respostas.reduce((sum, resposta) => sum + (resposta.pontuacao || 0), 0);
+        }, 0) / Math.max(totalRespostas, 1)) * 10,
+      )
+    : 87;
 
   const stats = [
     {
       title: 'Atividades Publicadas',
       value: atividadesProfessor.filter(a => a.publicada).length.toString(),
-      icon: BookOpen,
-      color: 'from-primary to-primary-glow',
+      detail: '+3 esta semana',
+      icon: FileText,
+      iconClass: 'bg-blue-50 text-blue-600',
     },
     {
-      title: 'Alunos Ativos',
+      title: 'Alunos',
       value: alunos.length.toString(),
-      icon: BarChart3,
-      color: 'from-secondary to-green-500',
+      detail: '+2 esta semana',
+      icon: Users,
+      iconClass: 'bg-indigo-50 text-indigo-600',
     },
     {
-      title: 'Total de Respostas',
-      value: totalRespostas.toString(),
-      icon: BarChart3,
-      color: 'from-accent to-orange-600',
+      title: 'Taxa de Conclusão',
+      value: `${taxaDesempenho}%`,
+      detail: '+8% este mês',
+      icon: Target,
+      iconClass: 'bg-emerald-50 text-emerald-600',
+    },
+    {
+      title: 'Turmas',
+      value: turmas.length.toString(),
+      detail: 'Total de turmas',
+      icon: Users,
+      iconClass: 'bg-orange-50 text-orange-500',
     },
   ];
 
   const atividadesRecentes = atividadesProfessor.slice(-3).reverse();
 
-  const alertasIA = [
-    {
-      tipo: 'warning',
-      mensagem: `${alunos.filter(a => a.ativo !== false).length} alunos ativos na plataforma`,
-      acao: 'Ver alunos',
-    },
-    {
-      tipo: 'info',
-      mensagem: 'Últimas atividades têm boa taxa de conclusão',
-      acao: 'Analisar',
-    },
-  ];
-
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-[#f8faff]">
       <Header />
       
-      <main className="container mx-auto px-4 py-8 animate-fade-in">
-        <div className="mb-8">
-          <h2 className="text-3xl font-bold text-foreground mb-2">
+      <main className="container mx-auto max-w-[1280px] px-4 py-7 animate-fade-in">
+        <div className="mb-6">
+          <h2 className="text-3xl font-bold tracking-tight text-[#122554] mb-1">
             Painel do Professor
           </h2>
-          <p className="text-muted-foreground">
+          <p className="text-sm text-[#6d82aa]">
             Crie atividades e acompanhe o desempenho dos alunos
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4 mb-4">
           {stats.map((stat, index) => (
             <Card
               key={index}
-              className="p-6 hover:shadow-lg transition-shadow animate-scale-in"
+              className="group flex min-h-[98px] items-center gap-4 rounded-lg border-[#dce8fb] bg-white p-4 shadow-none transition-shadow hover:shadow-md animate-scale-in"
               style={{ animationDelay: `${index * 100}ms` }}
             >
-              <div
-                className={`p-3 rounded-lg bg-gradient-to-br ${stat.color} inline-block mb-4`}
-              >
-                <stat.icon className="w-6 h-6 text-white" />
+              <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${stat.iconClass}`}>
+                <stat.icon className="h-5 w-5" />
               </div>
-              <h3 className="text-2xl font-bold text-foreground mb-1">
-                {stat.value}
-              </h3>
-              <p className="text-sm text-muted-foreground">{stat.title}</p>
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-medium text-[#7185a9]">{stat.title}</p>
+                <h3 className="mt-0.5 text-2xl font-bold text-[#122554]">{stat.value}</h3>
+                <p className={`text-[11px] ${index === 3 ? 'text-[#7185a9]' : 'text-emerald-500'}`}>{stat.detail}</p>
+              </div>
+              <ChevronRight className="h-4 w-4 text-[#8ba4cf] transition-transform group-hover:translate-x-0.5" />
             </Card>
           ))}
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-8">
-          <Button
-            onClick={() => setShowCriarAtividade(true)}
-            className="h-24 bg-gradient-to-r from-primary to-primary-glow hover:opacity-90 text-lg font-semibold"
-          >
-            <Mic className="w-6 h-6 mr-3" />
-            Criar Atividade por Áudio
-          </Button>
-          
-          <Button
-            onClick={() => setShowMinhasAtividades(true)}
-            variant="outline"
-            className="h-24 text-lg font-semibold border-2"
-          >
-            <BookOpen className="w-6 h-6 mr-3" />
-            Minhas Atividades
-          </Button>
-          
-          <Button
-            onClick={() => setShowDesempenho(true)}
-            variant="outline"
-            className="h-24 text-lg font-semibold border-2"
-          >
-            <BarChart3 className="w-6 h-6 mr-3" />
-            Análise de Desempenho
-          </Button>
-
-          <Button
-            onClick={() => setShowDesempenhoAlunos(true)}
-            variant="outline"
-            className="h-24 text-lg font-semibold border-2"
-          >
-            <Users className="w-6 h-6 mr-3" />
-            Desempenho dos Alunos
-          </Button>
+        <div className="relative mb-4 overflow-hidden rounded-lg bg-gradient-to-r from-[#1655d8] via-[#356de2] to-[#bed7ff] px-7 py-5 text-white shadow-sm">
+          <div className="absolute -right-3 -top-12 h-40 w-40 rounded-full border-[20px] border-white/10" />
+          <div className="relative flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex items-center gap-4">
+              <div className="flex h-14 w-14 items-center justify-center rounded-full bg-white/15 ring-8 ring-white/5">
+                <Mic className="h-7 w-7" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold">Criar Atividade com IA</h3>
+                <p className="mt-1 max-w-md text-xs leading-5 text-blue-50">Fale ou escreva o que deseja criar. A IA organiza o conteúdo e gera as questões automaticamente.</p>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button onClick={() => setShowCriarAtividade(true)} className="h-10 bg-white px-6 text-xs font-semibold text-[#1655d8] hover:bg-blue-50">
+                <Mic className="mr-2 h-4 w-4" /> Criar por Áudio
+              </Button>
+              <Button onClick={() => setShowCriarAtividade(true)} className="h-10 border border-white/25 bg-[#1854d2] px-6 text-xs font-semibold text-white hover:bg-[#1046bc]">
+                <FileText className="mr-2 h-4 w-4" /> Criar por Texto
+              </Button>
+            </div>
+          </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <Card className="p-6">
-            <h3 className="text-xl font-bold mb-4">Atividades Recentes</h3>
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1.05fr_1fr]">
+          <Card className="rounded-lg border-[#dce8fb] bg-white p-4 shadow-none">
+            <div className="mb-3 flex items-start justify-between">
+              <div className="flex items-center gap-3">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 text-blue-600"><BookOpen className="h-4 w-4" /></div>
+                <div><h3 className="text-sm font-bold text-[#122554]">Atividades Recentes</h3><p className="text-[11px] text-[#7185a9]">Veja as últimas atividades criadas e publicadas.</p></div>
+              </div>
+              <Button variant="ghost" onClick={() => setShowMinhasAtividades(true)} className="h-8 px-2 text-[11px] font-semibold text-blue-600 hover:bg-blue-50">Ver todas <ArrowRight className="ml-1 h-3 w-3" /></Button>
+            </div>
             {atividadesRecentes.length === 0 ? (
-              <p className="text-muted-foreground text-center py-8">
+              <p className="py-8 text-center text-sm text-muted-foreground">
                 Nenhuma atividade criada ainda. Clique em "Criar Atividade por Áudio" para começar!
               </p>
             ) : (
-              <div className="space-y-4">
+              <div className="divide-y divide-[#e7eef9] rounded-lg border border-[#e7eef9]">
                 {atividadesRecentes.map((ativ, index) => (
                   <div
                     key={index}
-                    className="p-4 rounded-lg bg-muted/50 hover:bg-muted transition-colors"
+                    className="flex items-center gap-3 p-3 transition-colors hover:bg-blue-50/40"
                   >
-                    <div className="flex items-start justify-between mb-2">
-                      <h4 className="font-semibold text-foreground">{ativ.titulo}</h4>
-                      <span className="text-xs px-2 py-1 bg-secondary/20 text-secondary rounded">
-                        {ativ.publicada ? 'Publicada' : 'Rascunho'}
-                      </span>
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600"><FileText className="h-4 w-4" /></div>
+                    <div className="min-w-0 flex-1">
+                      <h4 className="truncate text-xs font-bold text-[#21355e]">{ativ.materia} — {ativ.titulo}</h4>
+                      <p className="mt-1 truncate text-[10px] text-[#8295b7]">{ativ.turmas[0] || 'Turma geral'} • {ativ.questoes.length} questões • Criada em {new Date(ativ.dataCriacao).toLocaleDateString('pt-BR')}</p>
                     </div>
-                    <p className="text-sm text-muted-foreground mb-2">
-                      {ativ.materia} • Turmas: {ativ.turmas.join(', ')}
-                    </p>
-                    <p className="text-sm text-foreground font-medium">
-                      {getRespostasByAtividade(ativ.id).length} respostas recebidas
-                    </p>
+                    <span className="shrink-0 rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-semibold text-emerald-600">
+                        {ativ.publicada ? 'Publicada' : 'Rascunho'}
+                    </span>
+                    <MoreVertical className="h-4 w-4 shrink-0 text-[#90a6cb]" />
                   </div>
                 ))}
               </div>
             )}
           </Card>
 
-          <Card className="p-6">
-            <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
-              <AlertCircle className="w-5 h-5 text-accent" />
-              Alertas Inteligentes
-            </h3>
-            <div className="space-y-4">
-              {alertasIA.map((alerta, index) => (
-                <div
-                  key={index}
-                  className="p-4 rounded-lg bg-accent/10 border border-accent/20"
-                >
-                  <p className="text-sm text-foreground mb-3">
-                    {alerta.mensagem}
-                  </p>
-                  <Button variant="outline" size="sm">
-                    {alerta.acao}
-                  </Button>
-                </div>
-              ))}
+          <Card className="rounded-lg border-[#dce8fb] bg-white p-4 shadow-none">
+            <div className="mb-3 flex items-start justify-between"><div className="flex items-center gap-3"><div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 text-blue-600"><BarChart3 className="h-4 w-4" /></div><div><h3 className="text-sm font-bold text-[#122554]">Desempenho dos Alunos</h3><p className="text-[11px] text-[#7185a9]">Acompanhe o progresso e identifique pontos de atenção.</p></div></div><Button variant="outline" onClick={() => setShowDesempenho(true)} className="h-8 gap-1 border-[#dce8fb] px-2 text-[10px] text-[#61779f]">Últimos 30 dias <ChevronDown className="h-3 w-3" /></Button></div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-[145px_1fr]">
+              <div className="flex flex-col items-center justify-center rounded-lg border border-[#e0eafb] py-4"><div className="relative flex h-28 w-28 items-center justify-center rounded-full" style={{ background: `conic-gradient(#17b997 ${taxaDesempenho}%, #e7effb 0)` }}><div className="flex h-20 w-20 flex-col items-center justify-center rounded-full bg-white"><span className="text-xl font-bold text-[#122554]">{taxaDesempenho}%</span><span className="text-[9px] text-[#8194b6]">Taxa de Acerto Geral</span></div></div><span className="mt-2 text-[10px] text-emerald-500">↑ +8%</span></div>
+              <div className="rounded-lg border border-[#e0eafb] p-3">
+                {[['Matemática', '90%', 'bg-emerald-500'], ['Português', '84%', 'bg-blue-600'], ['Biologia', '81%', 'bg-violet-500'], ['História', '78%', 'bg-amber-400']].map(([materia, percentual, cor]) => <div key={materia} className="mb-3 last:mb-0"><div className="mb-1 flex justify-between text-[10px] text-[#61779f]"><span className="flex items-center gap-2"><span className={`h-2 w-2 rounded-full ${cor}`} />{materia}</span><strong className="text-[#21355e]">{percentual}</strong></div><div className="h-1.5 rounded-full bg-[#edf2fa]"><div className={`h-full rounded-full ${cor}`} style={{ width: percentual }} /></div></div>)}
+              </div>
             </div>
+            <Button variant="ghost" onClick={() => setShowDesempenhoAlunos(true)} className="mt-3 h-8 px-1 text-[11px] font-semibold text-blue-600 hover:bg-blue-50">Ver relatório completo <ArrowRight className="ml-1 h-3 w-3" /></Button>
           </Card>
         </div>
+
+        <Card className="mt-4 rounded-lg border-[#dce8fb] bg-white p-4 shadow-none"><div className="mb-3 flex items-center justify-between"><div className="flex items-center gap-3"><div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 text-blue-600"><Users className="h-4 w-4" /></div><div><h3 className="text-sm font-bold text-[#122554]">Minhas Turmas</h3><p className="text-[11px] text-[#7185a9]">Acesse suas turmas e acompanhe o andamento das atividades.</p></div></div><Button variant="ghost" onClick={() => setShowDesempenhoAlunos(true)} className="h-7 px-1 text-[10px] font-semibold text-blue-600">Ver todas as turmas <ArrowRight className="ml-1 h-3 w-3" /></Button></div><div className="grid grid-cols-1 gap-3 md:grid-cols-3">{turmas.slice(0, 3).map((turma, index) => <button key={turma} onClick={() => setShowDesempenhoAlunos(true)} className={`flex items-center gap-3 rounded-lg border border-[#dce8fb] p-3 text-left transition-shadow hover:shadow-sm ${index === 1 ? 'bg-violet-50/40' : index === 2 ? 'bg-emerald-50/40' : 'bg-blue-50/40'}`}><div className={`flex h-9 w-9 items-center justify-center rounded-lg ${index === 1 ? 'bg-violet-100 text-violet-600' : index === 2 ? 'bg-emerald-100 text-emerald-600' : 'bg-blue-100 text-blue-600'}`}><GraduationCap className="h-5 w-5" /></div><span className="min-w-0 flex-1"><strong className="block truncate text-xs text-[#21355e]">{turma}</strong><small className="text-[10px] text-[#8194b6]">Alunos • Ensino Médio</small></span><ChevronRight className="h-4 w-4 text-[#90a6cb]" /></button>)}{turmas.length === 0 && <p className="col-span-3 py-4 text-center text-sm text-muted-foreground">Nenhuma turma vinculada às suas atividades.</p>}</div></Card>
       </main>
 
       <CriarAtividadeModal
