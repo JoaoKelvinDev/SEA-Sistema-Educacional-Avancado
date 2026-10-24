@@ -22,15 +22,24 @@ const MinhasAtividadesModal = ({ isOpen, onClose }: MinhasAtividadesModalProps) 
   const { getAtividadesByProfessor, deleteAtividade } = useData();
   const [atividadeVisualizar, setAtividadeVisualizar] = useState<Atividade | null>(null);
   const [atividadeEditar, setAtividadeEditar] = useState<Atividade | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const atividadesProfessor = user ? getAtividadesByProfessor(user.id) : [];
   const publicadas = atividadesProfessor.filter(a => a.publicada);
   const rascunhos = atividadesProfessor.filter(a => !a.publicada);
 
-  const handleDelete = (id: string, titulo: string) => {
+  const handleDelete = async (id: string, titulo: string) => {
     if (confirm(`Tem certeza que deseja excluir "${titulo}"?`)) {
-      deleteAtividade(id);
-      toast.success('Atividade excluída com sucesso!');
+      setDeletingId(id);
+      try {
+        await deleteAtividade(id);
+        toast.success('Atividade excluída com sucesso!');
+      } catch (error) {
+        console.error('Erro ao excluir atividade:', error);
+        toast.error(error instanceof Error ? error.message : 'Erro ao excluir atividade.');
+      } finally {
+        setDeletingId(null);
+      }
     }
   };
 
@@ -98,7 +107,8 @@ const MinhasAtividadesModal = ({ isOpen, onClose }: MinhasAtividadesModalProps) 
                         <Button
                           size="sm"
                           variant="destructive"
-                          onClick={() => handleDelete(ativ.id, ativ.titulo)}
+                          disabled={deletingId === ativ.id}
+                          onClick={() => void handleDelete(ativ.id, ativ.titulo)}
                           title="Excluir"
                         >
                           <Trash2 className="h-4 w-4" />
@@ -157,7 +167,8 @@ const MinhasAtividadesModal = ({ isOpen, onClose }: MinhasAtividadesModalProps) 
                         <Button
                           size="sm"
                           variant="destructive"
-                          onClick={() => handleDelete(ativ.id, ativ.titulo)}
+                          disabled={deletingId === ativ.id}
+                          onClick={() => void handleDelete(ativ.id, ativ.titulo)}
                           title="Excluir"
                         >
                           <Trash2 className="h-4 w-4" />

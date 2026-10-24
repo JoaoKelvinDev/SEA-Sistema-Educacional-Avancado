@@ -25,14 +25,74 @@ Regras:
 - Sempre gere questões com conteúdo correto e gabaritos coerentes.
 - Adapte a linguagem e os exemplos à realidade escolar brasileira.`;
 
-export default async function handler(req: any, res: any) {
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+interface ApiRequest {
+  method?: string;
+  body?: unknown;
+}
+
+interface ApiResponse {
+  status(code: number): ApiResponse;
+  json(payload: unknown): ApiResponse;
+}
+
+const isGeneratedActivity = (value: unknown): boolean => {
+  if (
+    !isRecord(value) ||
+    typeof value.titulo !== 'string' ||
+    !value.titulo.trim() ||
+    typeof value.descricao !== 'string' ||
+    typeof value.materia !== 'string' ||
+    !value.materia.trim() ||
+    !Array.isArray(value.questoes) ||
+    value.questoes.length === 0
+  ) {
+    return false;
+  }
+
+  return value.questoes.every((questao) => {
+    if (
+      !isRecord(questao) ||
+      typeof questao.enunciado !== 'string' ||
+      !questao.enunciado.trim() ||
+      typeof questao.gabarito !== 'string' ||
+      !questao.gabarito.trim() ||
+      typeof questao.pontos !== 'number' ||
+      !Number.isFinite(questao.pontos) ||
+      questao.pontos <= 0
+    ) {
+      return false;
+    }
+
+    if (questao.tipo === 'multipla_escolha') {
+      return Array.isArray(questao.alternativas) &&
+        questao.alternativas.length >= 2 &&
+        questao.alternativas.every((alternativa) => typeof alternativa === 'string' && alternativa.trim()) &&
+        questao.alternativas.includes(questao.gabarito);
+    }
+
+    if (questao.tipo === 'verdadeiro_falso') {
+      return Array.isArray(questao.alternativas) &&
+        questao.alternativas.includes('Verdadeiro') &&
+        questao.alternativas.includes('Falso') &&
+        ['Verdadeiro', 'Falso'].includes(questao.gabarito);
+    }
+
+    return questao.tipo === 'dissertativa';
+  });
+};
+
+export default async function handler(req: ApiRequest, res: ApiResponse) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Método não permitido' });
   }
 
-  const { transcricao } = req.body as { transcricao?: string };
+  const body = isRecord(req.body) ? req.body : {};
+  const transcricao = typeof body.transcricao === 'string' ? body.transcricao : '';
 
-  if (!transcricao || transcricao.trim().length < 5) {
+  if (transcricao.trim().length < 5) {
     return res.status(400).json({ error: 'Transcrição vazia ou muito curta' });
   }
 
@@ -73,17 +133,27 @@ export default async function handler(req: any, res: any) {
       return res.status(502).json({ error: 'Erro ao chamar a IA', detail: errText, status: response.status });
     }
 
-    const data = (await response.json()) as any;
-    const rawText: string = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+    const data: unknown = await response.json();
+    const candidates = isRecord(data) && Array.isArray(data.candidates) ? data.candidates : [];
+    const candidate = isRecord(candidates[0]) ? candidates[0] : {};
+    const content = isRecord(candidate.content) ? candidate.content : {};
+    const parts = Array.isArray(content.parts) ? content.parts : [];
+    const firstPart = isRecord(parts[0]) ? parts[0] : {};
+    const rawText = typeof firstPart.text === 'string' ? firstPart.text : '';
 
     const cleaned = rawText.replace(/```json\s*|\s*```/g, '').trim();
 
-    let atividadeGerada;
+    let atividadeGerada: unknown;
     try {
       atividadeGerada = JSON.parse(cleaned);
     } catch (e) {
       console.error('Falha ao parsear JSON da IA:', rawText);
       return res.status(502).json({ error: 'A IA retornou um formato inválido' });
+    }
+
+    if (!isGeneratedActivity(atividadeGerada)) {
+      console.error('A IA retornou uma atividade com campos inválidos.');
+      return res.status(502).json({ error: 'A IA retornou uma atividade incompleta ou inválida' });
     }
 
     return res.status(200).json(atividadeGerada);

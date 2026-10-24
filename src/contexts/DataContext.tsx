@@ -1,7 +1,7 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import { toast } from 'sonner';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Atividade, RespostaAluno, User } from '@/types';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface DataContextType {
   atividades: Atividade[];
@@ -12,10 +12,9 @@ interface DataContextType {
   addAtividade: (atividade: Omit<Atividade, 'id' | 'dataCriacao'>) => Promise<void>;
   updateAtividade: (id: string, atividade: Partial<Atividade>) => Promise<void>;
   deleteAtividade: (id: string) => Promise<void>;
-  addResposta: (resposta: Omit<RespostaAluno, 'id' | 'dataEnvio'>) => Promise<void>;
+  addResposta: (resposta: Omit<RespostaAluno, 'id' | 'dataEnvio'>) => Promise<{ pontosAtualizados: boolean }>;
   updateUser: (id: string, updates: Partial<User>) => Promise<void>;
   deleteUser: (id: string) => Promise<void>;
-  resetUserPassword: (id: string, newPassword: string) => Promise<void>;
   getAtividadesByProfessor: (professorId: string) => Atividade[];
   getAtividadesByAluno: (turma: string) => Atividade[];
   getRespostasByAluno: (alunoId: string) => RespostaAluno[];
@@ -24,6 +23,7 @@ interface DataContextType {
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
+type DataUser = Pick<User, 'id' | 'role' | 'turma'>;
 
 export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [atividades, setAtividades] = useState<Atividade[]>([]);
@@ -31,34 +31,41 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [professores, setProfessores] = useState<User[]>([]);
   const [alunos, setAlunos] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const { user, refreshUser } = useAuth();
+  const userId = user?.id;
+  const userRole = user?.role;
+  const userTurma = user?.turma;
+  const dataUser = useMemo<DataUser | null>(
+    () => userId && userRole ? { id: userId, role: userRole, turma: userTurma } : null,
+    [userId, userRole, userTurma]
+  );
 
-  useEffect(() => {
-    fetchAll();
-  }, []);
+  const fetchAtividades = useCallback(async (currentUser: DataUser): Promise<Atividade[]> => {
+    if (currentUser.role === 'aluno' && !currentUser.turma) {
+      setAtividades([]);
+      return [];
+    }
 
-  const fetchAll = async () => {
-    setIsLoading(true);
-    await Promise.all([
-      fetchAtividades(),
-      fetchRespostas(),
-      fetchProfessores(),
-      fetchAlunos(),
-    ]);
-    setIsLoading(false);
-  };
+    let query = supabase.from('atividades').select('*');
+    if (currentUser.role === 'professor') {
+      query = query.eq('professor_id', currentUser.id);
+    } else if (currentUser.role === 'aluno') {
+      query = query
+        .eq('publicada', true)
+        .contains('turmas', [currentUser.turma || '']);
+    } else if (currentUser.role !== 'admin') {
+      setAtividades([]);
+      return [];
+    }
 
-  const fetchAtividades = async () => {
-    const { data, error } = await supabase
-      .from('atividades')
-      .select('*')
-      .order('created_at', { ascending: false });
+    const { data, error } = await query.order('created_at', { ascending: false });
 
     if (error) {
       console.error('Erro ao buscar atividades:', error);
-      return;
+      return [];
     }
 
-    setAtividades(data.map(a => ({
+    const atividadesCarregadas = data.map(a => ({
       id: a.id,
       titulo: a.titulo,
       descricao: a.descricao,
@@ -69,14 +76,28 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       questoes: a.questoes,
       dataCriacao: a.created_at,
       publicada: a.publicada,
-    })));
-  };
+    }));
+    setAtividades(atividadesCarregadas);
+    return atividadesCarregadas;
+  }, []);
 
-  const fetchRespostas = async () => {
-    const { data, error } = await supabase
-      .from('respostas')
-      .select('*')
-      .order('created_at', { ascending: false });
+  const fetchRespostas = useCallback(async (currentUser: DataUser, atividadesUsuario: Atividade[]) => {
+    let query = supabase.from('respostas').select('*');
+    if (currentUser.role === 'aluno') {
+      query = query.eq('aluno_id', currentUser.id);
+    } else if (currentUser.role === 'professor') {
+      const atividadeIds = atividadesUsuario.map((atividade) => atividade.id);
+      if (atividadeIds.length === 0) {
+        setRespostas([]);
+        return;
+      }
+      query = query.in('atividade_id', atividadeIds);
+    } else if (currentUser.role !== 'admin') {
+      setRespostas([]);
+      return;
+    }
+
+    const { data, error } = await query.order('created_at', { ascending: false });
 
     if (error) {
       console.error('Erro ao buscar respostas:', error);
@@ -92,9 +113,14 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       feedback: r.feedback,
       dataEnvio: r.created_at,
     })));
-  };
+  }, []);
 
-  const fetchProfessores = async () => {
+  const fetchProfessores = useCallback(async (currentUser: DataUser) => {
+    if (currentUser.role !== 'admin') {
+      setProfessores([]);
+      return;
+    }
+
     const { data, error } = await supabase
       .from('profiles')
       .select('*')
@@ -113,13 +139,23 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       avatar: p.avatar,
       ativo: p.ativo,
     })));
-  };
+  }, []);
 
-  const fetchAlunos = async () => {
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('role', 'aluno');
+  const fetchAlunos = useCallback(async (currentUser: DataUser, atividadesUsuario: Atividade[]) => {
+    let query = supabase.from('profiles').select('*').eq('role', 'aluno');
+    if (currentUser.role === 'professor') {
+      const turmas = [...new Set(atividadesUsuario.flatMap((atividade) => atividade.turmas))];
+      if (turmas.length === 0) {
+        setAlunos([]);
+        return;
+      }
+      query = query.in('turma', turmas);
+    } else if (currentUser.role !== 'admin') {
+      setAlunos([]);
+      return;
+    }
+
+    const { data, error } = await query;
 
     if (error) {
       console.error('Erro ao buscar alunos:', error);
@@ -136,7 +172,34 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       badges: a.badges,
       ativo: a.ativo,
     })));
-  };
+  }, []);
+
+  const fetchAll = useCallback(async (currentUser: DataUser | null) => {
+    if (!currentUser) {
+      setAtividades([]);
+      setRespostas([]);
+      setProfessores([]);
+      setAlunos([]);
+      setIsLoading(false);
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const atividadesUsuario = await fetchAtividades(currentUser);
+      await Promise.all([
+        fetchRespostas(currentUser, atividadesUsuario),
+        fetchProfessores(currentUser),
+        fetchAlunos(currentUser, atividadesUsuario),
+      ]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [fetchAtividades, fetchRespostas, fetchProfessores, fetchAlunos]);
+
+  useEffect(() => {
+    void fetchAll(dataUser);
+  }, [dataUser, fetchAll]);
 
   const addAtividade = async (atividade: Omit<Atividade, 'id' | 'dataCriacao'>) => {
     const { error } = await supabase
@@ -154,16 +217,14 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     if (error) {
       console.error('Erro ao criar atividade:', error);
-      toast.error('Erro ao criar atividade!');
-      return;
+      throw new Error(error.message || 'Erro ao criar atividade.');
     }
 
-    toast.success('Atividade criada com sucesso!');
-    await fetchAtividades();
+    if (user) await fetchAtividades(user);
   };
 
   const updateAtividade = async (id: string, updates: Partial<Atividade>) => {
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('atividades')
       .update({
         titulo: updates.titulo,
@@ -173,35 +234,51 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         questoes: updates.questoes,
         publicada: updates.publicada,
       })
-      .eq('id', id);
+      .eq('id', id)
+      .select('id')
+      .maybeSingle();
 
-    if (error) {
+    if (error || !data) {
       console.error('Erro ao atualizar atividade:', error);
-      toast.error('Erro ao atualizar atividade!');
-      return;
+      throw new Error(error?.message || 'Atividade não encontrada ou atualização não autorizada.');
     }
 
-    toast.success('Atividade atualizada!');
-    await fetchAtividades();
+    if (user) await fetchAtividades(user);
   };
 
   const deleteAtividade = async (id: string) => {
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('atividades')
       .delete()
-      .eq('id', id);
+      .eq('id', id)
+      .select('id')
+      .maybeSingle();
 
-    if (error) {
+    if (error || !data) {
       console.error('Erro ao deletar atividade:', error);
-      toast.error('Erro ao deletar atividade!');
-      return;
+      throw new Error(error?.message || 'Atividade não encontrada ou exclusão não autorizada.');
     }
 
-    toast.success('Atividade deletada!');
-    await fetchAtividades();
+    if (user) await fetchAtividades(user);
   };
 
   const addResposta = async (resposta: Omit<RespostaAluno, 'id' | 'dataEnvio'>) => {
+    const { data: existente, error: consultaError } = await supabase
+      .from('respostas')
+      .select('id')
+      .eq('atividade_id', resposta.atividadeId)
+      .eq('aluno_id', resposta.alunoId)
+      .maybeSingle();
+
+    if (consultaError) {
+      console.error('Erro ao verificar resposta existente:', consultaError);
+      throw new Error('Não foi possível verificar se esta atividade já foi enviada.');
+    }
+
+    if (existente) {
+      throw new Error('Esta atividade já foi enviada por este aluno.');
+    }
+
     const { error } = await supabase
       .from('respostas')
       .insert({
@@ -214,28 +291,47 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     if (error) {
       console.error('Erro ao enviar resposta:', error);
-      toast.error('Erro ao enviar resposta!');
-      return;
+      throw new Error(error.message || 'Erro ao enviar resposta.');
     }
 
-    // Atualizar pontos do aluno
-    if (resposta.pontuacao) {
-      const aluno = alunos.find(a => a.id === resposta.alunoId);
-      if (aluno) {
-        await supabase
+    let pontosAtualizados = true;
+    if (resposta.pontuacao && resposta.pontuacao > 0) {
+      const { data: perfil, error: consultaPerfilError } = await supabase
+        .from('profiles')
+        .select('pontos')
+        .eq('id', resposta.alunoId)
+        .single();
+
+      if (consultaPerfilError || !perfil) {
+        console.error('Resposta salva, mas não foi possível consultar os pontos do aluno:', consultaPerfilError);
+        pontosAtualizados = false;
+      } else {
+        const { data: perfilAtualizado, error: pontosError } = await supabase
           .from('profiles')
-          .update({ pontos: (aluno.pontos || 0) + resposta.pontuacao })
-          .eq('id', resposta.alunoId);
+          .update({ pontos: (perfil.pontos || 0) + resposta.pontuacao })
+          .eq('id', resposta.alunoId)
+          .select('id')
+          .maybeSingle();
+
+        if (pontosError || !perfilAtualizado) {
+          console.error('Resposta salva, mas não foi possível atualizar os pontos do aluno:', pontosError);
+          pontosAtualizados = false;
+        }
       }
     }
 
-    toast.success('Resposta enviada com sucesso!');
-    await fetchRespostas();
-    await fetchAlunos();
+    if (pontosAtualizados) {
+      await refreshUser();
+    }
+    if (user) {
+      await fetchRespostas(user, atividades);
+      await fetchAlunos(user, atividades);
+    }
+    return { pontosAtualizados };
   };
 
   const updateUser = async (id: string, updates: Partial<User>) => {
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('profiles')
       .update({
         name: updates.name,
@@ -243,38 +339,38 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         ativo: updates.ativo,
         avatar: updates.avatar,
       })
-      .eq('id', id);
+      .eq('id', id)
+      .select('id')
+      .maybeSingle();
 
-    if (error) {
+    if (error || !data) {
       console.error('Erro ao atualizar usuário:', error);
-      toast.error('Erro ao atualizar usuário!');
-      return;
+      throw new Error(error?.message || 'Usuário não encontrado ou atualização não autorizada.');
     }
 
-    toast.success('Usuário atualizado!');
-    await fetchProfessores();
-    await fetchAlunos();
+    if (user) {
+      await fetchProfessores(user);
+      await fetchAlunos(user, atividades);
+    }
   };
 
   const deleteUser = async (id: string) => {
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('profiles')
       .update({ ativo: false })
-      .eq('id', id);
+      .eq('id', id)
+      .select('id')
+      .maybeSingle();
 
-    if (error) {
+    if (error || !data) {
       console.error('Erro ao desativar usuário:', error);
-      toast.error('Erro ao desativar usuário!');
-      return;
+      throw new Error(error?.message || 'Usuário não encontrado ou desativação não autorizada.');
     }
 
-    toast.success('Usuário desativado!');
-    await fetchProfessores();
-    await fetchAlunos();
-  };
-
-  const resetUserPassword = async (id: string, newPassword: string) => {
-    toast.success('Senha resetada com sucesso!');
+    if (user) {
+      await fetchProfessores(user);
+      await fetchAlunos(user, atividades);
+    }
   };
 
   const getAtividadesByProfessor = (professorId: string) => {
@@ -306,12 +402,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       addResposta,
       updateUser,
       deleteUser,
-      resetUserPassword,
       getAtividadesByProfessor,
       getAtividadesByAluno,
       getRespostasByAluno,
       getRespostasByAtividade,
-      refetch: fetchAll,
+      refetch: () => fetchAll(dataUser),
     }}>
       {children}
     </DataContext.Provider>

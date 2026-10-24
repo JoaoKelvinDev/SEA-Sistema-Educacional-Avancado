@@ -20,10 +20,13 @@ interface ResolverAtividadeCardProps {
 const ResolverAtividadeCard = ({ atividade, alunoId, onClose }: ResolverAtividadeCardProps) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [respostas, setRespostas] = useState<{ [key: string]: string }>({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const { addResposta } = useData();
 
   const currentQuestao = atividade.questoes[currentIndex];
-  const progress = ((currentIndex + 1) / atividade.questoes.length) * 100;
+  const progress = atividade.questoes.length
+    ? ((currentIndex + 1) / atividade.questoes.length) * 100
+    : 0;
   const isLastQuestion = currentIndex === atividade.questoes.length - 1;
 
   const handleResposta = (questaoId: string, resposta: string) => {
@@ -36,8 +39,8 @@ const ResolverAtividadeCard = ({ atividade, alunoId, onClose }: ResolverAtividad
       const resposta = respostas[questao.id];
       if (!resposta || !resposta.trim()) return;
 
-      const respostaNorm = resposta.trim().toLowerCase();
-      const gabaritoNorm = questao.gabarito.trim().toLowerCase();
+      const respostaNorm = resposta.trim().toLocaleLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      const gabaritoNorm = questao.gabarito.trim().toLocaleLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
       // Para múltipla escolha e verdadeiro/falso: comparação exata
       if (questao.tipo === 'multipla_escolha' || questao.tipo === 'verdadeiro_falso') {
@@ -47,18 +50,20 @@ const ResolverAtividadeCard = ({ atividade, alunoId, onClose }: ResolverAtividad
       } 
       // Para dissertativa: pontuação parcial baseada em palavras-chave
       else if (questao.tipo === 'dissertativa') {
-        const palavrasChaveGabarito = gabaritoNorm.split(/\s+/).filter(p => p.length > 3);
-        const palavrasResposta = respostaNorm.split(/\s+/);
+        const palavrasChaveGabarito = gabaritoNorm.split(/\W+/).filter(p => p.length > 3);
+        const palavrasResposta = new Set(respostaNorm.split(/\W+/).filter(Boolean));
         
         let palavrasEncontradas = 0;
         palavrasChaveGabarito.forEach(palavra => {
-          if (palavrasResposta.some(p => p.includes(palavra) || palavra.includes(p))) {
+          if (palavrasResposta.has(palavra)) {
             palavrasEncontradas++;
           }
         });
 
         // Calcula pontuação proporcional (mínimo 30% de acerto para ganhar pontos)
-        const percentualAcerto = palavrasEncontradas / palavrasChaveGabarito.length;
+        const percentualAcerto = palavrasChaveGabarito.length > 0
+          ? palavrasEncontradas / palavrasChaveGabarito.length
+          : respostaNorm === gabaritoNorm ? 1 : 0;
         if (percentualAcerto >= 0.3) {
           pontuacao += Math.round(questao.pontos * percentualAcerto);
         }
@@ -67,38 +72,63 @@ const ResolverAtividadeCard = ({ atividade, alunoId, onClose }: ResolverAtividad
     return pontuacao;
   };
 
-const handleComplete = async () => {
+  const handleComplete = async () => {
+    if (isSubmitting) return;
+
     const pontuacao = calcularPontuacao();
+    setIsSubmitting(true);
 
-    await addResposta({
-      atividadeId: atividade.id,
-      alunoId: alunoId,
-      respostas: respostas,
-      pontuacao: pontuacao,
-      feedback: `Você obteve ${pontuacao} pontos nesta atividade!`
-    });
-    
-    toast.success(`Atividade concluída! Você ganhou ${pontuacao} pontos! 🎉`, {
-      duration: 5000,
-    });
+    try {
+      const resultado = await addResposta({
+        atividadeId: atividade.id,
+        alunoId,
+        respostas,
+        pontuacao,
+        feedback: `Você obteve ${pontuacao} pontos nesta atividade!`
+      });
 
-    setTimeout(() => {
-      onClose();
-    }, 1500);
+      if (resultado.pontosAtualizados) {
+        toast.success(`Atividade concluída! Você ganhou ${pontuacao} pontos! 🎉`, {
+          duration: 5000,
+        });
+      } else {
+        toast.warning('Resposta salva, mas os pontos não puderam ser atualizados. Avise a administração.');
+      }
+
+      setTimeout(onClose, 1500);
+    } catch (error) {
+      console.error('Erro ao enviar atividade:', error);
+      toast.error(error instanceof Error ? error.message : 'Não foi possível enviar suas respostas.');
+      setIsSubmitting(false);
+    }
   };
 
-  const handleNext = () => {
-    if (!respostas[currentQuestao.id]) {
+  const handleNext = async () => {
+    if (!currentQuestao || !respostas[currentQuestao.id]?.trim()) {
       toast.error('Por favor, responda a questão antes de continuar');
       return;
     }
 
     if (isLastQuestion) {
-      handleComplete();
+      await handleComplete();
     } else {
       setCurrentIndex((prev) => prev + 1);
     }
   };
+
+  if (!currentQuestao) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Header />
+        <main className="container mx-auto px-4 py-8">
+          <Card className="mx-auto max-w-2xl p-8 text-center">
+            <p className="mb-4 text-foreground">Esta atividade não possui questões disponíveis.</p>
+            <Button onClick={onClose}>Voltar</Button>
+          </Card>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -206,7 +236,8 @@ const handleComplete = async () => {
                   {currentQuestao.pontos} ponto{currentQuestao.pontos !== 1 ? 's' : ''}
                 </p>
                 <Button
-                  onClick={handleNext}
+                  onClick={() => void handleNext()}
+                  disabled={isSubmitting}
                   className="bg-gradient-to-r from-primary to-primary-glow hover:opacity-90 px-8"
                 >
                   {isLastQuestion ? (

@@ -9,6 +9,7 @@ import { Plus, Trash2, Edit2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useData } from '@/contexts/DataContext';
 import { Atividade, Questao } from '@/types';
+import { validateAtividade } from '@/lib/atividadeValidation';
 
 interface EditarAtividadeModalProps {
   isOpen: boolean;
@@ -21,6 +22,7 @@ const turmasDisponiveis = ['1º Ano A', '1º Ano B', '2º Ano A', '2º Ano B', '
 
 const EditarAtividadeModal = ({ isOpen, onClose, atividade }: EditarAtividadeModalProps) => {
   const [editingQuestionIndex, setEditingQuestionIndex] = useState<number | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
   const { updateAtividade } = useData();
 
   const [formData, setFormData] = useState({
@@ -70,7 +72,7 @@ const EditarAtividadeModal = ({ isOpen, onClose, atividade }: EditarAtividadeMod
     }
   };
 
-  const handleUpdateQuestao = (index: number, field: string, value: any) => {
+  const handleUpdateQuestao = <K extends keyof Questao>(index: number, field: K, value: Questao[K]) => {
     const updatedQuestoes = [...formData.questoes];
     updatedQuestoes[index] = { ...updatedQuestoes[index], [field]: value };
     setFormData({ ...formData, questoes: updatedQuestoes });
@@ -84,25 +86,39 @@ const EditarAtividadeModal = ({ isOpen, onClose, atividade }: EditarAtividadeMod
     setFormData({ ...formData, questoes: updatedQuestoes });
   };
 
-  const handleSalvar = (publicar: boolean) => {
+  const handleSalvar = async (publicar: boolean) => {
     if (!atividade) return;
 
-    if (!formData.titulo || !formData.materia || formData.turmas.length === 0 || formData.questoes.length === 0) {
-      toast.error('Preencha todos os campos obrigatórios!');
+    if (publicar) {
+      const validationError = validateAtividade(formData);
+      if (validationError) {
+        toast.error(validationError);
+        return;
+      }
+    } else if (!formData.titulo.trim()) {
+      toast.error('Informe um título para salvar o rascunho.');
       return;
     }
 
-    updateAtividade(atividade.id, {
-      titulo: formData.titulo,
-      descricao: formData.descricao,
-      materia: formData.materia,
-      turmas: formData.turmas,
-      questoes: formData.questoes,
-      publicada: publicar
-    });
-    
-    toast.success(publicar ? 'Atividade publicada com sucesso! 🎉' : 'Atividade salva como rascunho!');
-    onClose();
+    setIsSaving(true);
+    try {
+      await updateAtividade(atividade.id, {
+        titulo: formData.titulo.trim(),
+        descricao: formData.descricao,
+        materia: formData.materia,
+        turmas: formData.turmas,
+        questoes: formData.questoes,
+        publicada: publicar
+      });
+
+      toast.success(publicar ? 'Atividade publicada com sucesso!' : 'Atividade salva como rascunho!');
+      onClose();
+    } catch (error) {
+      console.error('Erro ao salvar atividade:', error);
+      toast.error(error instanceof Error ? error.message : 'Erro ao salvar atividade.');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   if (!atividade) return null;
@@ -224,13 +240,17 @@ const EditarAtividadeModal = ({ isOpen, onClose, atividade }: EditarAtividadeMod
                         <Select 
                           value={questao.tipo} 
                           onValueChange={(v) => {
-                            handleUpdateQuestao(index, 'tipo', v);
                             if (v === 'verdadeiro_falso') {
+                              handleUpdateQuestao(index, 'tipo', 'verdadeiro_falso');
                               handleUpdateQuestao(index, 'alternativas', ['Verdadeiro', 'Falso']);
                             } else if (v === 'dissertativa') {
+                              handleUpdateQuestao(index, 'tipo', 'dissertativa');
                               handleUpdateQuestao(index, 'alternativas', undefined);
-                            } else if (v === 'multipla_escolha' && !questao.alternativas) {
-                              handleUpdateQuestao(index, 'alternativas', ['', '', '', '']);
+                            } else if (v === 'multipla_escolha') {
+                              handleUpdateQuestao(index, 'tipo', 'multipla_escolha');
+                              if (!questao.alternativas) {
+                                handleUpdateQuestao(index, 'alternativas', ['', '', '', '']);
+                              }
                             }
                           }}
                         >
@@ -285,11 +305,11 @@ const EditarAtividadeModal = ({ isOpen, onClose, atividade }: EditarAtividadeMod
                             <SelectValue placeholder="Selecione a resposta correta" />
                           </SelectTrigger>
                           <SelectContent>
-                            {questao.alternativas?.map((alt, idx) => (
+                            {questao.alternativas?.map((alt, idx) => alt.trim() ? (
                               <SelectItem key={idx} value={alt}>
                                 {String.fromCharCode(65 + idx)}: {alt}
                               </SelectItem>
-                            ))}
+                            ) : null)}
                           </SelectContent>
                         </Select>
                       ) : questao.tipo === 'verdadeiro_falso' ? (
@@ -334,11 +354,11 @@ const EditarAtividadeModal = ({ isOpen, onClose, atividade }: EditarAtividadeMod
           </div>
 
           <div className="flex gap-2 justify-end pt-4 border-t">
-            <Button type="button" variant="outline" onClick={() => handleSalvar(false)}>
-              Salvar como Rascunho
+            <Button type="button" variant="outline" onClick={() => void handleSalvar(false)} disabled={isSaving}>
+              {isSaving ? 'Salvando...' : 'Salvar como Rascunho'}
             </Button>
-            <Button type="button" onClick={() => handleSalvar(true)} className="bg-gradient-to-r from-primary to-primary-glow">
-              {atividade.publicada ? 'Atualizar Atividade' : 'Publicar Atividade'}
+            <Button type="button" onClick={() => void handleSalvar(true)} disabled={isSaving} className="bg-gradient-to-r from-primary to-primary-glow">
+              {isSaving ? 'Salvando...' : atividade.publicada ? 'Atualizar Atividade' : 'Publicar Atividade'}
             </Button>
           </div>
         </div>

@@ -9,6 +9,7 @@ import ConquistasModal from './ConquistasModal';
 import HistoricoModal from './HistoricoModal';
 import { useAuth } from '@/contexts/AuthContext';
 import { useData } from '@/contexts/DataContext';
+import { getConquistasDesbloqueadas } from '@/lib/conquistas';
 
 const DashboardAluno = () => {
   const [showChat, setShowChat] = useState(false);
@@ -26,7 +27,10 @@ const DashboardAluno = () => {
   );
 
   const pontosTotais = user?.pontos || 0;
-  const atividadesConcluidas = respostasAluno.length;
+  const atividadesConcluidas = atividadesDisponiveis.filter((atividade) =>
+    respostasAluno.some((resposta) => resposta.atividadeId === atividade.id)
+  ).length;
+  const conquistasDesbloqueadas = getConquistasDesbloqueadas(respostasAluno, atividades);
 
   const handleIniciarAtividade = (atividadeId: string) => {
     setAtividadeAtual(atividadeId);
@@ -83,7 +87,7 @@ const DashboardAluno = () => {
             <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
               <Clock className="h-5 w-5" />
             </div>
-            <div><p className="text-xs font-medium text-[#7185a9]">Conquistas</p><h3 className="mt-1 text-2xl font-bold text-[#122554]">{user?.badges?.length || 0}</h3><p className="text-[11px] text-[#8194b6]">Badges desbloqueados</p></div>
+            <div><p className="text-xs font-medium text-[#7185a9]">Conquistas</p><h3 className="mt-1 text-2xl font-bold text-[#122554]">{conquistasDesbloqueadas.size}</h3><p className="text-[11px] text-[#8194b6]">Badges desbloqueados</p></div>
           </Card>
         </div>
 

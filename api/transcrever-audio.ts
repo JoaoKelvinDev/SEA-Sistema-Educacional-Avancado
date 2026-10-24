@@ -1,9 +1,24 @@
-export default async function handler(req: any, res: any) {
+interface ApiRequest {
+  method?: string;
+  body?: unknown;
+}
+
+interface ApiResponse {
+  status(code: number): ApiResponse;
+  json(payload: unknown): ApiResponse;
+}
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+export default async function handler(req: ApiRequest, res: ApiResponse) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Método não permitido' });
   }
 
-  const { audio, mimeType } = req.body as { audio?: string; mimeType?: string };
+  const body = isRecord(req.body) ? req.body : {};
+  const audio = typeof body.audio === 'string' ? body.audio : '';
+  const mimeType = typeof body.mimeType === 'string' ? body.mimeType : '';
 
   if (!audio) {
     return res.status(400).json({ error: 'Áudio não enviado' });
@@ -45,10 +60,15 @@ export default async function handler(req: any, res: any) {
       return res.status(502).json({ error: 'Erro ao transcrever áudio', detail: errText, status: response.status });
     }
 
-    const data = (await response.json()) as any;
-    const text: string = (
-      data?.results?.channels?.[0]?.alternatives?.[0]?.transcript || ''
-    ).trim();
+    const data: unknown = await response.json();
+    const results = isRecord(data) && isRecord(data.results) ? data.results : {};
+    const channels = Array.isArray(results.channels) ? results.channels : [];
+    const firstChannel = isRecord(channels[0]) ? channels[0] : {};
+    const alternatives = Array.isArray(firstChannel.alternatives) ? firstChannel.alternatives : [];
+    const firstAlternative = isRecord(alternatives[0]) ? alternatives[0] : {};
+    const text = typeof firstAlternative.transcript === 'string'
+      ? firstAlternative.transcript.trim()
+      : '';
 
     if (!text) {
       return res.status(422).json({ error: 'Não foi possível identificar fala no áudio enviado' });

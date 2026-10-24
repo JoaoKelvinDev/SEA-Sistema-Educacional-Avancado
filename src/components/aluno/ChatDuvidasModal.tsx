@@ -38,14 +38,13 @@ const ChatDuvidasModal = ({ isOpen, onClose }: ChatDuvidasModalProps) => {
     setMessages((prev) => [...prev, userMessage]);
     setInputValue('');
 
-    // Simulate AI response
-    setTimeout(() => {
-      const aiResponse = {
-        text: `Entendo sua dúvida sobre "${inputValue}". Vou explicar de forma clara: [Resposta simulada da IA aqui]. Precisa de mais ajuda?`,
+    setMessages((prev) => [
+      ...prev,
+      {
+        text: 'Este chat está em modo de demonstração: sua dúvida não foi enviada a uma IA e ainda não há uma resposta automática configurada.',
         isUser: false,
-      };
-      setMessages((prev) => [...prev, aiResponse]);
-    }, 1000);
+      },
+    ]);
   };
 
   const handleBack = () => {
@@ -77,6 +76,9 @@ const ChatDuvidasModal = ({ isOpen, onClose }: ChatDuvidasModalProps) => {
           </div>
         ) : (
           <div className="flex-1 flex flex-col">
+            <p className="mb-3 rounded-md bg-muted p-3 text-xs text-muted-foreground">
+              Modo de demonstração. As mensagens não são respondidas por uma IA.
+            </p>
             <Button
               variant="ghost"
               size="sm"

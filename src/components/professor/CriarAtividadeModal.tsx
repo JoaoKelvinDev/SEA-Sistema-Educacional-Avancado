@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,22 +9,40 @@ import { Mic, MicOff, Loader2, Plus, Trash2, Edit2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import { useData } from '@/contexts/DataContext';
-import { Atividade, Questao } from '@/types';
+import { Questao } from '@/types';
+import { validateAtividade } from '@/lib/atividadeValidation';
+
+interface GeneratedActivity {
+  titulo: string;
+  descricao: string;
+  materia: string;
+  questoes: Array<Omit<Questao, 'id'>>;
+}
+
+interface ApiError {
+  error?: string;
+  detail?: string;
+}
 
 interface CriarAtividadeModalProps {
   isOpen: boolean;
   onClose: () => void;
+  mode?: 'audio' | 'text';
 }
 
 const materias = ['Matemática', 'Português', 'Física', 'Química', 'Biologia', 'Geografia', 'História', 'Sociologia', 'Filosofia', 'Inglês', 'Arte', 'Educação Física'];
 const turmasDisponiveis = ['1º Ano A', '1º Ano B', '2º Ano A', '2º Ano B', '3º Ano A', '3º Ano B'];
 
-const CriarAtividadeModal = ({ isOpen, onClose }: CriarAtividadeModalProps) => {
-  const [step, setStep] = useState<'audio' | 'preview'>('audio');
+const CriarAtividadeModal = ({ isOpen, onClose, mode = 'audio' }: CriarAtividadeModalProps) => {
+  const [step, setStep] = useState<'audio' | 'preview'>(mode === 'text' ? 'preview' : 'audio');
   const [isRecording, setIsRecording] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [editingQuestionIndex, setEditingQuestionIndex] = useState<number | null>(null);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const audioMimeRef = useRef('audio/webm');
+  const recordingIntervalRef = useRef<number | null>(null);
   const { user } = useAuth();
   const { addAtividade } = useData();
 
@@ -35,6 +53,40 @@ const CriarAtividadeModal = ({ isOpen, onClose }: CriarAtividadeModalProps) => {
     turmas: [] as string[],
     questoes: [] as Questao[],
   });
+
+  useEffect(() => {
+    if (!isOpen) {
+      if (recordingIntervalRef.current !== null) {
+        window.clearInterval(recordingIntervalRef.current);
+        recordingIntervalRef.current = null;
+      }
+      if (recorderRef.current) {
+        const recorder = recorderRef.current;
+        if (recorder.state !== 'inactive') recorder.stop();
+        recorder.stream.getTracks().forEach((track) => track.stop());
+        recorderRef.current = null;
+      }
+      setIsRecording(false);
+      setIsProcessing(false);
+      setRecordingTime(0);
+      return;
+    }
+
+    setStep(mode === 'text' ? 'preview' : 'audio');
+    setFormData({ titulo: '', descricao: '', materia: '', turmas: [], questoes: [] });
+    setEditingQuestionIndex(null);
+  }, [isOpen, mode]);
+
+  useEffect(() => () => {
+    if (recordingIntervalRef.current !== null) {
+      window.clearInterval(recordingIntervalRef.current);
+    }
+    const recorder = recorderRef.current;
+    if (recorder) {
+      recorder.stream.getTracks().forEach((track) => track.stop());
+      if (recorder.state !== 'inactive') recorder.stop();
+    }
+  }, []);
 
   const handleStartRecording = async () => {
     if (!navigator.mediaDevices || !window.MediaRecorder) {
@@ -57,20 +109,18 @@ const CriarAtividadeModal = ({ isOpen, onClose }: CriarAtividadeModalProps) => {
       const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
 
       recorder.start();
-      (window as any).__sea_recorder = recorder;
-      (window as any).__sea_audioMime = recorder.mimeType || mimeType || 'audio/webm';
+      recorderRef.current = recorder;
+      audioMimeRef.current = recorder.mimeType || mimeType || 'audio/webm';
 
       setIsRecording(true);
       toast.success('Gravação iniciada! Fale o conteúdo da atividade.');
 
-      const interval = setInterval(() => {
+      recordingIntervalRef.current = window.setInterval(() => {
         setRecordingTime((prev) => prev + 1);
       }, 1000);
-
-      (window as any).recordingInterval = interval;
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Erro ao acessar microfone:', err);
-      if (err.name === 'NotAllowedError') {
+      if (err instanceof DOMException && err.name === 'NotAllowedError') {
         toast.error('Permissão de microfone negada. Habilite o acesso ao microfone para o site nas configurações do navegador.');
       } else {
         toast.error('Não foi possível acessar o microfone.');
@@ -95,12 +145,13 @@ const CriarAtividadeModal = ({ isOpen, onClose }: CriarAtividadeModalProps) => {
     setIsRecording(false);
     setIsProcessing(true);
 
-    if ((window as any).recordingInterval) {
-      clearInterval((window as any).recordingInterval);
+    if (recordingIntervalRef.current !== null) {
+      window.clearInterval(recordingIntervalRef.current);
+      recordingIntervalRef.current = null;
     }
     setRecordingTime(0);
 
-    const recorder: MediaRecorder | undefined = (window as any).__sea_recorder;
+    const recorder = recorderRef.current;
     if (!recorder) {
       setIsProcessing(false);
       toast.error('Erro interno: gravador não encontrado.');
@@ -115,6 +166,7 @@ const CriarAtividadeModal = ({ isOpen, onClose }: CriarAtividadeModalProps) => {
     const stopPromise = new Promise<void>((resolve) => {
       recorder.onstop = () => {
         recorder.stream.getTracks().forEach((track) => track.stop());
+        recorderRef.current = null;
         resolve();
       };
     });
@@ -122,7 +174,7 @@ const CriarAtividadeModal = ({ isOpen, onClose }: CriarAtividadeModalProps) => {
     recorder.stop();
     await stopPromise;
 
-    const mimeType: string = (window as any).__sea_audioMime || 'audio/webm';
+    const mimeType = audioMimeRef.current;
     const audioBlob = new Blob(chunks, { type: mimeType });
 
     if (audioBlob.size < 1000) {
@@ -143,7 +195,7 @@ const CriarAtividadeModal = ({ isOpen, onClose }: CriarAtividadeModalProps) => {
       });
 
       if (!transcribeResponse.ok) {
-        const err = await transcribeResponse.json().catch(() => ({}));
+        const err = await transcribeResponse.json().catch((): ApiError => ({})) as ApiError;
         console.error('Detalhe do erro de transcrição:', err);
         throw new Error(err.detail ? `${err.error}: ${err.detail}` : (err.error || 'Erro ao transcrever áudio'));
       }
@@ -159,14 +211,14 @@ const CriarAtividadeModal = ({ isOpen, onClose }: CriarAtividadeModalProps) => {
       });
 
       if (!response.ok) {
-        const err = await response.json().catch(() => ({}));
+        const err = await response.json().catch((): ApiError => ({})) as ApiError;
         console.error('Detalhe do erro de geração:', err);
         throw new Error(err.detail ? `${err.error}: ${err.detail}` : (err.error || 'Erro ao gerar atividade'));
       }
 
-      const atividadeGerada = await response.json();
+      const atividadeGerada = await response.json() as GeneratedActivity;
 
-      const questoesComId: Questao[] = (atividadeGerada.questoes || []).map((q: any, idx: number) => ({
+      const questoesComId: Questao[] = atividadeGerada.questoes.map((q, idx) => ({
         id: `q-${Date.now()}-${idx}`,
         enunciado: q.enunciado,
         tipo: q.tipo,
@@ -185,9 +237,9 @@ const CriarAtividadeModal = ({ isOpen, onClose }: CriarAtividadeModalProps) => {
 
       setStep('preview');
       toast.success('Atividade gerada com sucesso! Revise antes de publicar.');
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      toast.error(err.message || 'Erro ao processar áudio com IA');
+      toast.error(err instanceof Error ? err.message : 'Erro ao processar áudio com IA');
     } finally {
       setIsProcessing(false);
     }
@@ -226,7 +278,7 @@ const CriarAtividadeModal = ({ isOpen, onClose }: CriarAtividadeModalProps) => {
     }
   };
 
-  const handleUpdateQuestao = (index: number, field: string, value: any) => {
+  const handleUpdateQuestao = <K extends keyof Questao>(index: number, field: K, value: Questao[K]) => {
     const updatedQuestoes = [...formData.questoes];
     updatedQuestoes[index] = { ...updatedQuestoes[index], [field]: value };
     setFormData({ ...formData, questoes: updatedQuestoes });
@@ -240,59 +292,66 @@ const CriarAtividadeModal = ({ isOpen, onClose }: CriarAtividadeModalProps) => {
     setFormData({ ...formData, questoes: updatedQuestoes });
   };
 
-const handlePublicar = async () => {
+  const handlePublicar = async () => {
     if (!user) return;
 
-    if (!formData.titulo || !formData.materia || formData.turmas.length === 0 || formData.questoes.length === 0) {
-      toast.error('Preencha todos os campos obrigatórios!');
+    const validationError = validateAtividade(formData);
+    if (validationError) {
+      toast.error(validationError);
       return;
     }
 
-    await addAtividade({
-      titulo: formData.titulo,
-      descricao: formData.descricao,
-      professorId: user.id,
-      professorNome: user.name,
-      materia: formData.materia,
-      turmas: formData.turmas,
-      questoes: formData.questoes,
-      publicada: true
-    });
+    setIsSubmitting(true);
+    try {
+      await addAtividade({
+        titulo: formData.titulo,
+        descricao: formData.descricao,
+        professorId: user.id,
+        professorNome: user.name,
+        materia: formData.materia,
+        turmas: formData.turmas,
+        questoes: formData.questoes,
+        publicada: true
+      });
 
-    setFormData({
-      titulo: '',
-      descricao: '',
-      materia: '',
-      turmas: [],
-      questoes: []
-    });
-    setStep('audio');
-    onClose();
+      toast.success('Atividade publicada com sucesso!');
+      setFormData({ titulo: '', descricao: '', materia: '', turmas: [], questoes: [] });
+      setStep(mode === 'text' ? 'preview' : 'audio');
+      onClose();
+    } catch (error) {
+      console.error('Erro ao publicar atividade:', error);
+      toast.error(error instanceof Error ? error.message : 'Erro ao publicar atividade.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleRascunho = async () => {
     if (!user) return;
 
-    await addAtividade({
-      titulo: formData.titulo || 'Rascunho sem título',
-      descricao: formData.descricao,
-      professorId: user.id,
-      professorNome: user.name,
-      materia: formData.materia || 'Não definida',
-      turmas: formData.turmas,
-      questoes: formData.questoes,
-      publicada: false
-    });
+    setIsSubmitting(true);
+    try {
+      await addAtividade({
+        titulo: formData.titulo.trim() || 'Rascunho sem título',
+        descricao: formData.descricao,
+        professorId: user.id,
+        professorNome: user.name,
+        materia: formData.materia || 'Não definida',
+        turmas: formData.turmas,
+        questoes: formData.questoes,
+        publicada: false
+      });
 
-    setFormData({
-      titulo: '',
-      descricao: '',
-      materia: '',
-      turmas: [],
-      questoes: []
-    });
-    setStep('audio');
-    onClose();
+      toast.success('Rascunho salvo com sucesso!');
+      setFormData({ titulo: '', descricao: '', materia: '', turmas: [], questoes: [] });
+      setStep(mode === 'text' ? 'preview' : 'audio');
+      onClose();
+    } catch (error) {
+      console.error('Erro ao salvar rascunho:', error);
+      toast.error(error instanceof Error ? error.message : 'Erro ao salvar rascunho.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -300,7 +359,11 @@ const handlePublicar = async () => {
       <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
-            {step === 'audio' ? 'Criar Atividade por Áudio' : 'Pré-visualização e Edição'}
+            {step === 'audio'
+              ? 'Criar Atividade por Áudio'
+              : mode === 'text'
+                ? 'Nova Atividade'
+                : 'Pré-visualização e Edição'}
           </DialogTitle>
         </DialogHeader>
 
@@ -482,13 +545,17 @@ const handlePublicar = async () => {
                           <Select 
                             value={questao.tipo} 
                             onValueChange={(v) => {
-                              handleUpdateQuestao(index, 'tipo', v);
                               if (v === 'verdadeiro_falso') {
+                                handleUpdateQuestao(index, 'tipo', 'verdadeiro_falso');
                                 handleUpdateQuestao(index, 'alternativas', ['Verdadeiro', 'Falso']);
                               } else if (v === 'dissertativa') {
+                                handleUpdateQuestao(index, 'tipo', 'dissertativa');
                                 handleUpdateQuestao(index, 'alternativas', undefined);
-                              } else if (v === 'multipla_escolha' && !questao.alternativas) {
-                                handleUpdateQuestao(index, 'alternativas', ['', '', '', '']);
+                              } else if (v === 'multipla_escolha') {
+                                handleUpdateQuestao(index, 'tipo', 'multipla_escolha');
+                                if (!questao.alternativas) {
+                                  handleUpdateQuestao(index, 'alternativas', ['', '', '', '']);
+                                }
                               }
                             }}
                           >
@@ -543,11 +610,11 @@ const handlePublicar = async () => {
                               <SelectValue placeholder="Selecione a resposta correta" />
                             </SelectTrigger>
                             <SelectContent>
-                              {questao.alternativas?.map((alt, idx) => (
+                              {questao.alternativas?.map((alt, idx) => alt.trim() ? (
                                 <SelectItem key={idx} value={alt}>
                                   {String.fromCharCode(65 + idx)}: {alt}
                                 </SelectItem>
-                              ))}
+                              ) : null)}
                             </SelectContent>
                           </Select>
                         ) : questao.tipo === 'verdadeiro_falso' ? (
@@ -592,11 +659,11 @@ const handlePublicar = async () => {
             </div>
 
             <div className="flex gap-2 justify-end pt-4 border-t">
-              <Button type="button" variant="outline" onClick={handleRascunho}>
-                Salvar como Rascunho
+              <Button type="button" variant="outline" onClick={handleRascunho} disabled={isSubmitting}>
+                {isSubmitting ? 'Salvando...' : 'Salvar como Rascunho'}
               </Button>
-              <Button type="button" onClick={handlePublicar} className="bg-gradient-to-r from-primary to-primary-glow">
-                Publicar Atividade
+              <Button type="button" onClick={handlePublicar} disabled={isSubmitting} className="bg-gradient-to-r from-primary to-primary-glow">
+                {isSubmitting ? 'Publicando...' : 'Publicar Atividade'}
               </Button>
             </div>
           </div>

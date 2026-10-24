@@ -24,6 +24,7 @@ import { useData } from '@/contexts/DataContext';
 
 const DashboardProfessor = () => {
   const [showCriarAtividade, setShowCriarAtividade] = useState(false);
+  const [modoCriacao, setModoCriacao] = useState<'audio' | 'text'>('audio');
   const [showMinhasAtividades, setShowMinhasAtividades] = useState(false);
   const [showDesempenho, setShowDesempenho] = useState(false);
   const [showDesempenhoAlunos, setShowDesempenhoAlunos] = useState(false);
@@ -158,10 +159,10 @@ const DashboardProfessor = () => {
               </div>
             </div>
             <div className="flex flex-wrap gap-2">
-              <Button onClick={() => setShowCriarAtividade(true)} className="h-10 bg-white px-6 text-xs font-semibold text-[#1655d8] hover:bg-blue-50">
+              <Button onClick={() => { setModoCriacao('audio'); setShowCriarAtividade(true); }} className="h-10 bg-white px-6 text-xs font-semibold text-[#1655d8] hover:bg-blue-50">
                 <Mic className="mr-2 h-4 w-4" /> Criar por Áudio
               </Button>
-              <Button onClick={() => setShowCriarAtividade(true)} className="h-10 border border-white/25 bg-[#1854d2] px-6 text-xs font-semibold text-white hover:bg-[#1046bc]">
+              <Button onClick={() => { setModoCriacao('text'); setShowCriarAtividade(true); }} className="h-10 border border-white/25 bg-[#1854d2] px-6 text-xs font-semibold text-white hover:bg-[#1046bc]">
                 <FileText className="mr-2 h-4 w-4" /> Criar por Texto
               </Button>
             </div>
@@ -221,6 +222,7 @@ const DashboardProfessor = () => {
       <CriarAtividadeModal
         isOpen={showCriarAtividade}
         onClose={() => setShowCriarAtividade(false)}
+        mode={modoCriacao}
       />
       
       <MinhasAtividadesModal

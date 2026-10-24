@@ -33,7 +33,7 @@ const Login = () => {
       toast.success('Login realizado com sucesso!');
       navigate('/dashboard');
     } else {
-      toast.error('Email ou senha incorretos');
+      toast.error('Não foi possível entrar. Verifique suas credenciais e se sua conta está ativa.');
     }
     setIsLoggingIn(false);
   };
@@ -171,13 +171,8 @@ const handleSignup = async (e: React.FormEvent) => {
             <div className="flex items-start gap-2">
               <AlertCircle className="w-5 h-5 text-muted-foreground mt-0.5" />
               <div className="text-xs text-muted-foreground">
-                <p className="font-medium mb-2">Contas de demonstração:</p>
-                <ul className="space-y-1">
-                  <li>• Admin: admin@sea.com</li>
-                  <li>• Professor: prof@sea.com</li>
-                  <li>• Aluno: aluno@sea.com</li>
-                  <li className="mt-2 italic">Senha para todos: qualquer valor</li>
-                </ul>
+                <p className="font-medium">Acesse com suas credenciais cadastradas.</p>
+                <p className="mt-1">Se não tiver acesso ou esqueceu sua senha, entre em contato com a administração da instituição.</p>
               </div>
             </div>
           </div>

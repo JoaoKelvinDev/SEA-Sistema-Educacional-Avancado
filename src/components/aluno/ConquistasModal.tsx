@@ -4,6 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Trophy, Star, Flame, Target, Award, Zap } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useData } from '@/contexts/DataContext';
+import { getConquistasDesbloqueadas } from '@/lib/conquistas';
 
 interface ConquistasModalProps {
   isOpen: boolean;
@@ -54,7 +55,7 @@ const todasConquistas = [
   {
     id: 'rapido',
     nome: 'Relâmpago',
-    descricao: 'Complete uma atividade em menos de 5 minutos',
+    descricao: 'Complete uma atividade em menos de 5 minutos. O tempo ainda não é registrado.',
     icone: Zap,
     cor: 'from-blue-400 to-blue-600',
     desbloqueada: false
@@ -63,35 +64,17 @@ const todasConquistas = [
 
 const ConquistasModal = ({ isOpen, onClose }: ConquistasModalProps) => {
   const { user } = useAuth();
-  const { getRespostasByAluno } = useData();
+  const { getRespostasByAluno, atividades } = useData();
 
-  // Sistema dinâmico de conquistas
   const respostas = user ? getRespostasByAluno(user.id) : [];
-  
+  const idsDesbloqueados = getConquistasDesbloqueadas(respostas, atividades);
+
   const conquistasComStatus = todasConquistas.map(conquista => {
-    let desbloqueada = false;
-
-    if (conquista.id === 'primeira-atividade') {
-      desbloqueada = respostas.length >= 1;
-    } else if (conquista.id === 'nota-maxima') {
-      desbloqueada = respostas.some(r => {
-        const atividade = r.atividadeId;
-        const pontuacao = r.pontuacao || 0;
-        // Assume que temos acesso ao total de pontos
-        return pontuacao >= 100;
-      });
-    } else if (conquista.id === '10-atividades') {
-      desbloqueada = respostas.length >= 10;
-    } else if (conquista.id === 'sequencia-7') {
-      // Simula verificação de sequência (mock)
-      desbloqueada = respostas.length >= 7;
-    } else if (conquista.id === 'especialista') {
-      desbloqueada = respostas.length >= 5;
-    } else if (conquista.id === 'rapido') {
-      desbloqueada = respostas.length >= 3;
-    }
-
-    return { ...conquista, desbloqueada };
+    return {
+      ...conquista,
+      desbloqueada: idsDesbloqueados.has(conquista.id),
+      disponivel: conquista.id !== 'rapido',
+    };
   });
 
   const conquistasDesbloqueadas = conquistasComStatus.filter(c => c.desbloqueada);
@@ -160,7 +143,7 @@ const ConquistasModal = ({ isOpen, onClose }: ConquistasModalProps) => {
                         {conquista.descricao}
                       </p>
                       <Badge variant="outline" className="mt-2">
-                        Bloqueada 🔒
+                        {conquista.disponivel ? 'Bloqueada 🔒' : 'Medição indisponível'}
                       </Badge>
                     </div>
                   </div>

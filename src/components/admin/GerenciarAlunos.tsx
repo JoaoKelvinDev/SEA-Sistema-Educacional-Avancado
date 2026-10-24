@@ -5,13 +5,15 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Pencil, Trash2, KeyRound, Search } from 'lucide-react';
+import { Power, Trash2, KeyRound, Search } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { User } from '@/types';
 
 export default function GerenciarAlunos() {
-  const { alunos, updateUser, deleteUser, resetUserPassword } = useData();
+  const { alunos, updateUser, deleteUser } = useData();
   const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState('');
+  const [pendingUserId, setPendingUserId] = useState<string | null>(null);
 
   const filteredAlunos = alunos.filter(aluno => 
     aluno.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -19,42 +21,56 @@ export default function GerenciarAlunos() {
     aluno.turma?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const handleDelete = (id: string, name: string) => {
-    if (confirm(`Tem certeza que deseja remover ${name}?`)) {
-      deleteUser(id);
+  const handleDelete = async (id: string, name: string) => {
+    if (!confirm(`Tem certeza que deseja desativar ${name}?`)) return;
+
+    setPendingUserId(id);
+    try {
+      await deleteUser(id);
       toast({
-        title: "Aluno removido",
-        description: `${name} foi removido do sistema.`,
-        variant: "destructive"
+        title: 'Aluno desativado',
+        description: `${name} foi desativado.`,
       });
+    } catch (error) {
+      console.error('Erro ao desativar aluno:', error);
+      toast({
+        title: 'Não foi possível desativar o aluno',
+        description: error instanceof Error ? error.message : 'Tente novamente.',
+        variant: 'destructive',
+      });
+    } finally {
+      setPendingUserId(null);
     }
   };
 
-  const handleResetPassword = (id: string, name: string) => {
-    const newPassword = prompt(`Digite a nova senha para ${name}:`);
-    if (newPassword) {
-      resetUserPassword(id, newPassword);
-      toast({
-        title: "Senha resetada",
-        description: `Senha de ${name} foi alterada com sucesso.`,
-      });
-    }
-  };
-
-  const handleToggleStatus = (aluno: any) => {
+  const handleToggleStatus = async (aluno: User) => {
     const newStatus = aluno.ativo === false ? true : false;
-    updateUser(aluno.id, { ...aluno, ativo: newStatus });
-    toast({
-      title: newStatus ? "Aluno ativado" : "Aluno desativado",
-      description: `${aluno.name} foi ${newStatus ? 'ativado' : 'desativado'}.`,
-    });
+    setPendingUserId(aluno.id);
+    try {
+      await updateUser(aluno.id, { ativo: newStatus });
+      toast({
+        title: newStatus ? 'Aluno ativado' : 'Aluno desativado',
+        description: `${aluno.name} foi ${newStatus ? 'ativado' : 'desativado'}.`,
+      });
+    } catch (error) {
+      console.error('Erro ao alterar status do aluno:', error);
+      toast({
+        title: 'Não foi possível alterar o status',
+        description: error instanceof Error ? error.message : 'Tente novamente.',
+        variant: 'destructive',
+      });
+    } finally {
+      setPendingUserId(null);
+    }
   };
 
   return (
     <Card>
       <CardHeader>
         <CardTitle>Gerenciar Alunos</CardTitle>
-        <CardDescription>Visualize e gerencie todos os alunos cadastrados</CardDescription>
+        <CardDescription>
+          Visualize e gerencie os alunos. A redefinição de senha ficará disponível quando a função administrativa segura do backend estiver configurada.
+        </CardDescription>
         <div className="flex items-center gap-2 mt-4">
           <Search className="h-4 w-4 text-muted-foreground" />
           <Input
@@ -96,21 +112,26 @@ export default function GerenciarAlunos() {
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => handleToggleStatus(aluno)}
+                      disabled={pendingUserId === aluno.id}
+                      onClick={() => void handleToggleStatus(aluno)}
+                      title={aluno.ativo === false ? 'Ativar aluno' : 'Desativar aluno'}
                     >
-                      <Pencil className="h-4 w-4" />
+                      <Power className="h-4 w-4" />
                     </Button>
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => handleResetPassword(aluno.id, aluno.name)}
+                      disabled
+                      title="Redefinição segura requer uma função administrativa no backend."
+                      aria-label="Redefinição de senha indisponível até configuração do backend"
                     >
                       <KeyRound className="h-4 w-4" />
                     </Button>
                     <Button
                       size="sm"
                       variant="destructive"
-                      onClick={() => handleDelete(aluno.id, aluno.name)}
+                      disabled={pendingUserId === aluno.id}
+                      onClick={() => void handleDelete(aluno.id, aluno.name)}
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>

@@ -7,9 +7,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { toast } from 'sonner';
 import { Trash2, Edit2, Plus } from 'lucide-react';
+import { User } from '@/types';
 
 const GerenciarProfessores = () => {
-  const { professores, updateUser, deleteUser } = useData();
+  const { professores, updateUser, deleteUser, refetch } = useData();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -32,27 +33,36 @@ const GerenciarProfessores = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (editingId) {
-      await updateUser(editingId, { name: formData.name });
-      toast.success('Professor atualizado!');
-      resetForm();
-      setIsDialogOpen(false);
+    if (!formData.name.trim()) {
+      toast.error('Informe o nome do professor.');
       return;
     }
 
-    if (!formData.email || !formData.password || !formData.name) {
+    if (!editingId && (!formData.email || !formData.password)) {
       toast.error('Preencha todos os campos!');
+      return;
+    }
+
+    if (!editingId && formData.password.length < 6) {
+      toast.error('A senha deve ter no mínimo 6 caracteres.');
       return;
     }
 
     setIsSubmitting(true);
 
     try {
+      if (editingId) {
+        await updateUser(editingId, { name: formData.name.trim() });
+        toast.success('Professor atualizado!');
+        resetForm();
+        setIsDialogOpen(false);
+        return;
+      }
+
       const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
 
       if (sessionError || !sessionData.session) {
-        toast.error('Você precisa estar autenticado para criar um professor.');
-        return;
+        throw new Error('Você precisa estar autenticado para criar um professor.');
       }
 
       const { data, error } = await supabase.functions.invoke('smart-action', {
@@ -71,6 +81,7 @@ const GerenciarProfessores = () => {
         throw new Error(data?.error || 'Não foi possível criar o professor.');
       }
 
+      await refetch();
       toast.success(`Professor ${formData.name} cadastrado!`);
       resetForm();
       setIsDialogOpen(false);
@@ -86,16 +97,21 @@ const GerenciarProfessores = () => {
     }
   };
 
-  const handleEdit = (prof: any) => {
+  const handleEdit = (prof: User) => {
     setEditingId(prof.id);
     setFormData({ name: prof.name, email: prof.email, password: '' });
     setIsDialogOpen(true);
   };
 
   const handleDelete = async (id: string) => {
-    if (confirm('Tem certeza que deseja deletar este professor?')) {
+    if (!confirm('Tem certeza que deseja desativar este professor?')) return;
+
+    try {
       await deleteUser(id);
-      toast.success('Professor deletado!');
+      toast.success('Professor desativado!');
+    } catch (error) {
+      console.error('Erro ao desativar professor:', error);
+      toast.error(error instanceof Error ? error.message : 'Erro ao desativar professor.');
     }
   };
 
@@ -170,7 +186,7 @@ const GerenciarProfessores = () => {
                   <Button variant="outline" size="sm" onClick={() => handleEdit(prof)}>
                     <Edit2 className="w-4 h-4" />
                   </Button>
-                  <Button variant="destructive" size="sm" onClick={() => handleDelete(prof.id)}>
+                  <Button variant="destructive" size="sm" onClick={() => void handleDelete(prof.id)}>
                     <Trash2 className="w-4 h-4" />
                   </Button>
                 </TableCell>
