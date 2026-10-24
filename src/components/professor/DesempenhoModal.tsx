@@ -108,7 +108,7 @@ const DesempenhoModal = ({ isOpen, onClose }: DesempenhoModalProps) => {
                   </TableRow>
                 ) : (
                   atividadesComRespostas.map(ativ => {
-                    const totalAlunos = alunos.filter(a => 
+                    const totalAlunos = alunos.filter(a => a.ativo !== false &&
                       ativ.turmas.some(turma => a.turma === turma)
                     ).length;
                     const taxa = totalAlunos > 0 

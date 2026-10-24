@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { toast } from 'sonner';
-import { Trash2, Edit2, Plus } from 'lucide-react';
+import { Power, Edit2, Plus } from 'lucide-react';
 import { User } from '@/types';
 
 const GerenciarProfessores = () => {
@@ -14,6 +14,7 @@ const GerenciarProfessores = () => {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [pendingProfessorId, setPendingProfessorId] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -103,15 +104,23 @@ const GerenciarProfessores = () => {
     setIsDialogOpen(true);
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Tem certeza que deseja desativar este professor?')) return;
+  const handleToggleStatus = async (professor: User) => {
+    const ativar = professor.ativo === false;
+    if (!ativar && !confirm('Tem certeza que deseja desativar este professor?')) return;
 
+    setPendingProfessorId(professor.id);
     try {
-      await deleteUser(id);
-      toast.success('Professor desativado!');
+      if (ativar) {
+        await updateUser(professor.id, { ativo: true });
+      } else {
+        await deleteUser(professor.id);
+      }
+      toast.success(ativar ? 'Professor ativado!' : 'Professor desativado!');
     } catch (error) {
-      console.error('Erro ao desativar professor:', error);
-      toast.error(error instanceof Error ? error.message : 'Erro ao desativar professor.');
+      console.error('Erro ao alterar status do professor:', error);
+      toast.error(error instanceof Error ? error.message : 'Erro ao alterar status do professor.');
+    } finally {
+      setPendingProfessorId(null);
     }
   };
 
@@ -186,8 +195,14 @@ const GerenciarProfessores = () => {
                   <Button variant="outline" size="sm" onClick={() => handleEdit(prof)}>
                     <Edit2 className="w-4 h-4" />
                   </Button>
-                  <Button variant="destructive" size="sm" onClick={() => void handleDelete(prof.id)}>
-                    <Trash2 className="w-4 h-4" />
+                  <Button
+                    variant={prof.ativo === false ? 'outline' : 'destructive'}
+                    size="sm"
+                    disabled={pendingProfessorId === prof.id}
+                    onClick={() => void handleToggleStatus(prof)}
+                    title={prof.ativo === false ? 'Ativar professor' : 'Desativar professor'}
+                  >
+                    <Power className="w-4 h-4" />
                   </Button>
                 </TableCell>
               </TableRow>

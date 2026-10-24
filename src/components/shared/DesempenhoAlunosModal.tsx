@@ -116,7 +116,7 @@ const DesempenhoAlunosModal = ({ isOpen, onClose, professorId, turmaInicial }: D
 
   // Calcular estatísticas por turma
   const turmasStats = useMemo<TurmaStats[]>(() => turmasUnicas.map(turma => {
-    const alunosDaTurma = alunos.filter(a => a.turma === turma);
+    const alunosDaTurma = alunos.filter(a => a.ativo !== false && a.turma === turma);
     const alunosStats = alunosDaTurma.map(calcularAlunoStats).sort((a, b) => b.mediaGeral - a.mediaGeral);
     
     const mediaGeral = alunosStats.length > 0
@@ -139,6 +139,11 @@ const DesempenhoAlunosModal = ({ isOpen, onClose, professorId, turmaInicial }: D
       alunos: alunosStats
     };
   }).sort((a, b) => b.mediaGeral - a.mediaGeral), [alunos, calcularAlunoStats, turmasUnicas]);
+
+  const totalAlunosAtivos = useMemo(
+    () => alunos.filter((aluno) => aluno.ativo !== false).length,
+    [alunos],
+  );
 
   useEffect(() => {
     if (!isOpen) {
@@ -179,7 +184,7 @@ const DesempenhoAlunosModal = ({ isOpen, onClose, professorId, turmaInicial }: D
           <CardContent>
             <div className="flex items-center gap-2">
               <Users className="h-8 w-8 text-secondary" />
-              <span className="text-3xl font-bold">{alunos.length}</span>
+              <span className="text-3xl font-bold">{totalAlunosAtivos}</span>
             </div>
           </CardContent>
         </Card>

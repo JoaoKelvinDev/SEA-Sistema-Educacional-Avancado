@@ -11,13 +11,27 @@ import { useData } from '@/contexts/DataContext';
 
 export default function DashboardAdmin() {
   const [showDesempenhoAlunos, setShowDesempenhoAlunos] = useState(false);
-  const { professores, alunos, atividades } = useData();
+  const { professores, alunos, atividades, respostas } = useData();
+  const atividadesPublicadas = atividades.filter((atividade) => atividade.publicada);
+  const respostasEsperadas = atividadesPublicadas.reduce((total, atividade) => {
+    const turmasDaAtividade = new Set(atividade.turmas);
+    const alunosElegiveis = alunos.filter((aluno) =>
+      aluno.ativo !== false && aluno.turma && turmasDaAtividade.has(aluno.turma),
+    ).length;
+    return total + alunosElegiveis;
+  }, 0);
+  const respostasRecebidas = atividadesPublicadas.reduce((total, atividade) => {
+    return total + respostas.filter((resposta) => resposta.atividadeId === atividade.id).length;
+  }, 0);
+  const taxaEngajamento = respostasEsperadas > 0
+    ? Math.min(100, Math.round((respostasRecebidas / respostasEsperadas) * 100))
+    : 0;
   
   const stats = [
-    { title: 'Total de Professores', value: professores.length.toString(), icon: Users, color: 'text-primary' },
-    { title: 'Total de Alunos', value: alunos.length.toString(), icon: GraduationCap, color: 'text-secondary' },
-    { title: 'Atividades Publicadas', value: atividades.filter(a => a.publicada).length.toString(), icon: BookOpen, color: 'text-accent' },
-    { title: 'Taxa de Engajamento', value: '89%', icon: TrendingUp, color: 'text-primary' },
+    { title: 'Total de Professores', value: professores.filter((professor) => professor.ativo !== false).length.toString(), icon: Users, color: 'text-primary' },
+    { title: 'Total de Alunos', value: alunos.filter((aluno) => aluno.ativo !== false).length.toString(), icon: GraduationCap, color: 'text-secondary' },
+    { title: 'Atividades Publicadas', value: atividadesPublicadas.length.toString(), icon: BookOpen, color: 'text-accent' },
+    { title: 'Taxa de Conclusão', value: `${taxaEngajamento}%`, icon: TrendingUp, color: 'text-primary' },
   ];
 
   return (
