@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Atividade, RespostaAluno, User } from '@/types';
+import { Atividade, ProfessorTurma, RespostaAluno, User } from '@/types';
 import { useAuth } from '@/contexts/AuthContext';
 
 interface DataContextType {
@@ -8,6 +8,8 @@ interface DataContextType {
   respostas: RespostaAluno[];
   professores: User[];
   alunos: User[];
+  professorTurmas: ProfessorTurma[];
+  professorTurmasError: string | null;
   isLoading: boolean;
   addAtividade: (atividade: Omit<Atividade, 'id' | 'dataCriacao'>) => Promise<void>;
   updateAtividade: (id: string, atividade: Partial<Atividade>) => Promise<void>;
@@ -15,6 +17,7 @@ interface DataContextType {
   addResposta: (resposta: Omit<RespostaAluno, 'id' | 'dataEnvio'>) => Promise<{ pontosAtualizados: boolean }>;
   updateUser: (id: string, updates: Partial<User>) => Promise<void>;
   deleteUser: (id: string) => Promise<void>;
+  saveProfessorTurmas: (professorId: string, turmas: string[]) => Promise<void>;
   getAtividadesByProfessor: (professorId: string) => Atividade[];
   getAtividadesByAluno: (turma: string) => Atividade[];
   getRespostasByAluno: (alunoId: string) => RespostaAluno[];
@@ -30,6 +33,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [respostas, setRespostas] = useState<RespostaAluno[]>([]);
   const [professores, setProfessores] = useState<User[]>([]);
   const [alunos, setAlunos] = useState<User[]>([]);
+  const [professorTurmas, setProfessorTurmas] = useState<ProfessorTurma[]>([]);
+  const [professorTurmasError, setProfessorTurmasError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const { user, refreshUser } = useAuth();
   const userId = user?.id;
@@ -123,7 +128,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const { data, error } = await supabase
       .from('profiles')
-      .select('*')
+      .select('id, email, name, role, avatar, ativo')
       .eq('role', 'professor');
 
     if (error) {
@@ -141,10 +146,31 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     })));
   }, []);
 
-  const fetchAlunos = useCallback(async (currentUser: DataUser, atividadesUsuario: Atividade[]) => {
-    let query = supabase.from('profiles').select('*').eq('role', 'aluno');
+  const fetchProfessorTurmas = useCallback(async (currentUser: DataUser): Promise<ProfessorTurma[] | null> => {
+    setProfessorTurmasError(null);
+    if (currentUser.role !== 'admin' && currentUser.role !== 'professor') {
+      setProfessorTurmas([]);
+      return [];
+    }
+    let query = supabase.from('professor_turmas').select('professor_id, turma').order('turma');
+    if (currentUser.role === 'professor') query = query.eq('professor_id', currentUser.id);
+    const { data, error } = await query;
+    if (error) {
+      console.error('Erro ao buscar vínculos de turmas:', error);
+      setProfessorTurmas([]);
+      setProfessorTurmasError('Não foi possível carregar os vínculos de turmas. Atualize os dados antes de editar.');
+      return null;
+    }
+    const vinculos = data.map(v => ({ professorId: v.professor_id, turma: v.turma }));
+    setProfessorTurmas(vinculos);
+    return vinculos;
+  }, []);
+
+  const fetchAlunos = useCallback(async (currentUser: DataUser, vinculosUsuario: ProfessorTurma[]) => {
+    let query = supabase.from('profiles')
+      .select('id, email, name, role, turma, pontos, badges, ativo').eq('role', 'aluno');
     if (currentUser.role === 'professor') {
-      const turmas = [...new Set(atividadesUsuario.flatMap((atividade) => atividade.turmas))];
+      const turmas = [...new Set(vinculosUsuario.filter(v => v.professorId === currentUser.id).map(v => v.turma))];
       if (turmas.length === 0) {
         setAlunos([]);
         return;
@@ -159,6 +185,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     if (error) {
       console.error('Erro ao buscar alunos:', error);
+      setAlunos([]);
       return;
     }
 
@@ -180,22 +207,27 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setRespostas([]);
       setProfessores([]);
       setAlunos([]);
+      setProfessorTurmas([]);
+      setProfessorTurmasError(null);
       setIsLoading(false);
       return;
     }
 
     setIsLoading(true);
     try {
-      const atividadesUsuario = await fetchAtividades(currentUser);
+      const [atividadesUsuario, vinculosUsuario] = await Promise.all([
+        fetchAtividades(currentUser),
+        fetchProfessorTurmas(currentUser),
+      ]);
       await Promise.all([
         fetchRespostas(currentUser, atividadesUsuario),
         fetchProfessores(currentUser),
-        fetchAlunos(currentUser, atividadesUsuario),
+        fetchAlunos(currentUser, vinculosUsuario ?? []),
       ]);
     } finally {
       setIsLoading(false);
     }
-  }, [fetchAtividades, fetchRespostas, fetchProfessores, fetchAlunos]);
+  }, [fetchAtividades, fetchRespostas, fetchProfessores, fetchProfessorTurmas, fetchAlunos]);
 
   useEffect(() => {
     void fetchAll(dataUser);
@@ -256,6 +288,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     if (error || !data) {
       console.error('Erro ao deletar atividade:', error);
+      if (error?.code === '23503') {
+        throw new Error('Esta atividade possui respostas e não pode ser excluída.');
+      }
       throw new Error(error?.message || 'Atividade não encontrada ou exclusão não autorizada.');
     }
 
@@ -325,7 +360,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     if (user) {
       await fetchRespostas(user, atividades);
-      await fetchAlunos(user, atividades);
+      await fetchAlunos(user, professorTurmas);
     }
     return { pontosAtualizados };
   };
@@ -350,7 +385,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     if (user) {
       await fetchProfessores(user);
-      await fetchAlunos(user, atividades);
+      await fetchAlunos(user, professorTurmas);
     }
   };
 
@@ -369,8 +404,22 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     if (user) {
       await fetchProfessores(user);
-      await fetchAlunos(user, atividades);
+      await fetchAlunos(user, professorTurmas);
     }
+  };
+
+  const saveProfessorTurmas = async (professorId: string, turmas: string[]) => {
+    if (user?.role !== 'admin') throw new Error('Somente administradores podem atribuir turmas.');
+    const { error } = await supabase.rpc('set_professor_turmas', {
+      p_professor_id: professorId,
+      p_turmas: turmas,
+    });
+    if (error) throw new Error(error.message || 'Não foi possível salvar as turmas.');
+    const vinculos = await fetchProfessorTurmas(user);
+    if (!vinculos) {
+      throw new Error('As turmas foram salvas, mas a lista não pôde ser atualizada. Recarregue a página.');
+    }
+    await fetchAlunos(user, vinculos);
   };
 
   const getAtividadesByProfessor = (professorId: string) => {
@@ -395,6 +444,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       respostas,
       professores,
       alunos,
+      professorTurmas,
+      professorTurmasError,
       isLoading,
       addAtividade,
       updateAtividade,
@@ -402,6 +453,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       addResposta,
       updateUser,
       deleteUser,
+      saveProfessorTurmas,
       getAtividadesByProfessor,
       getAtividadesByAluno,
       getRespostasByAluno,

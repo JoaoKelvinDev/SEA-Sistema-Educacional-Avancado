@@ -21,7 +21,14 @@ export default function DashboardAdmin() {
     return total + alunosElegiveis;
   }, 0);
   const respostasRecebidas = atividadesPublicadas.reduce((total, atividade) => {
-    return total + respostas.filter((resposta) => resposta.atividadeId === atividade.id).length;
+    const turmasDaAtividade = new Set(atividade.turmas);
+    const alunosElegiveis = new Set(alunos.filter((aluno) =>
+      aluno.ativo !== false && aluno.turma && turmasDaAtividade.has(aluno.turma),
+    ).map((aluno) => aluno.id));
+    const alunosComResposta = new Set(respostas.filter((resposta) =>
+      resposta.atividadeId === atividade.id && alunosElegiveis.has(resposta.alunoId),
+    ).map((resposta) => resposta.alunoId));
+    return total + alunosComResposta.size;
   }, 0);
   const taxaEngajamento = respostasEsperadas > 0
     ? Math.min(100, Math.round((respostasRecebidas / respostasEsperadas) * 100))

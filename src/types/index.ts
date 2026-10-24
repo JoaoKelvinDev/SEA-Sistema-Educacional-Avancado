@@ -1,5 +1,10 @@
 export type UserRole = 'admin' | 'professor' | 'aluno';
 
+export interface ProfessorTurma {
+  professorId: string;
+  turma: string;
+}
+
 export interface User {
   id: string;
   email: string;

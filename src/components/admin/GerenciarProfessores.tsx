@@ -3,18 +3,26 @@ import { useData } from '@/contexts/DataContext';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { toast } from 'sonner';
-import { Power, Edit2, Plus } from 'lucide-react';
+import { Power, Edit2, Plus, GraduationCap } from 'lucide-react';
 import { User } from '@/types';
 
+const turmasPadrao = ['1º Ano A', '1º Ano B', '2º Ano A', '2º Ano B', '3º Ano A', '3º Ano B'];
+
 const GerenciarProfessores = () => {
-  const { professores, updateUser, deleteUser, refetch } = useData();
+  const { professores, alunos, professorTurmas, professorTurmasError, isLoading,
+    updateUser, deleteUser, saveProfessorTurmas, refetch } = useData();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [pendingProfessorId, setPendingProfessorId] = useState<string | null>(null);
+  const [professorTurmasEditar, setProfessorTurmasEditar] = useState<User | null>(null);
+  const [turmasSelecionadas, setTurmasSelecionadas] = useState<string[]>([]);
+  const [isSavingTurmas, setIsSavingTurmas] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -124,6 +132,31 @@ const GerenciarProfessores = () => {
     }
   };
 
+  const turmasDisponiveis = [...new Set([
+    ...turmasPadrao,
+    ...alunos.map(aluno => aluno.turma).filter((turma): turma is string => Boolean(turma)),
+    ...professorTurmas.map(vinculo => vinculo.turma),
+  ])].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+
+  const handleEditarTurmas = (professor: User) => {
+    setTurmasSelecionadas(professorTurmas.filter(v => v.professorId === professor.id).map(v => v.turma));
+    setProfessorTurmasEditar(professor);
+  };
+
+  const handleSaveTurmas = async () => {
+    if (!professorTurmasEditar || isSavingTurmas || professorTurmasError || isLoading) return;
+    setIsSavingTurmas(true);
+    try {
+      await saveProfessorTurmas(professorTurmasEditar.id, turmasSelecionadas);
+      toast.success('Turmas do professor atualizadas.');
+      setProfessorTurmasEditar(null);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Não foi possível salvar as turmas.');
+    } finally {
+      setIsSavingTurmas(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -171,6 +204,14 @@ const GerenciarProfessores = () => {
         </Dialog>
       </div>
 
+      {professorTurmasError && (
+        <div role="alert" className="rounded-lg border border-destructive/30 p-3 text-sm">
+          <p>{professorTurmasError}</p>
+          <Button variant="outline" size="sm" className="mt-2" disabled={isLoading}
+            onClick={() => void refetch()}>Atualizar dados</Button>
+        </div>
+      )}
+
       <div className="border rounded-lg">
         <Table>
           <TableHeader>
@@ -178,6 +219,7 @@ const GerenciarProfessores = () => {
               <TableHead>Nome</TableHead>
               <TableHead>Email</TableHead>
               <TableHead>Status</TableHead>
+              <TableHead>Turmas</TableHead>
               <TableHead>Ações</TableHead>
             </TableRow>
           </TableHeader>
@@ -187,11 +229,19 @@ const GerenciarProfessores = () => {
                 <TableCell>{prof.name}</TableCell>
                 <TableCell>{prof.email}</TableCell>
                 <TableCell>
-                  <span className={`px-2 py-1 rounded text-sm ${prof.ativo ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                    {prof.ativo ? 'Ativo' : 'Inativo'}
+                  <span className={`px-2 py-1 rounded text-sm ${prof.ativo !== false ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                    {prof.ativo !== false ? 'Ativo' : 'Inativo'}
                   </span>
                 </TableCell>
+                <TableCell className="max-w-xs text-sm">
+                  {professorTurmasError ? 'Indisponível' : isLoading ? 'Carregando...' :
+                    professorTurmas.filter(v => v.professorId === prof.id).map(v => v.turma).join(', ') || 'Nenhuma turma atribuída'}
+                </TableCell>
                 <TableCell className="space-x-2">
+                  <Button variant="outline" size="sm" disabled={isLoading || Boolean(professorTurmasError)}
+                    onClick={() => handleEditarTurmas(prof)} aria-label={`Definir turmas de ${prof.name}`}>
+                    <GraduationCap className="mr-1 h-4 w-4" />Turmas
+                  </Button>
                   <Button variant="outline" size="sm" onClick={() => handleEdit(prof)}>
                     <Edit2 className="w-4 h-4" />
                   </Button>
@@ -210,6 +260,38 @@ const GerenciarProfessores = () => {
           </TableBody>
         </Table>
       </div>
+
+      <Dialog open={Boolean(professorTurmasEditar)} onOpenChange={(open) => {
+        if (!open && !isSavingTurmas) setProfessorTurmasEditar(null);
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Turmas de {professorTurmasEditar?.name}</DialogTitle>
+            <DialogDescription>
+              Defina as turmas cujos alunos este professor poderá consultar. Sem turmas atribuídas, ele não terá acesso aos alunos.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {turmasDisponiveis.map((turma, index) => (
+              <div key={turma} className="flex items-center gap-2">
+                <Checkbox id={`professor-turma-${index}`} checked={turmasSelecionadas.includes(turma)}
+                  disabled={isSavingTurmas || isLoading || Boolean(professorTurmasError)}
+                  onCheckedChange={(checked) => setTurmasSelecionadas(prev => checked === true
+                    ? [...new Set([...prev, turma])] : prev.filter(t => t !== turma))} />
+                <Label htmlFor={`professor-turma-${index}`}>{turma}</Label>
+              </div>
+            ))}
+          </div>
+          {turmasSelecionadas.length === 0 && (
+            <p className="text-sm text-muted-foreground">Salvar sem turmas remove todos os vínculos deste professor.</p>
+          )}
+          {professorTurmasError && <p role="alert" className="text-sm text-destructive">{professorTurmasError}</p>}
+          <Button onClick={() => void handleSaveTurmas()}
+            disabled={isSavingTurmas || isLoading || Boolean(professorTurmasError)}>
+            {isSavingTurmas ? 'Salvando...' : 'Salvar turmas'}
+          </Button>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

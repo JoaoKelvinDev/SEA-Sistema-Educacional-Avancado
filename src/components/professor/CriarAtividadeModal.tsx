@@ -31,7 +31,6 @@ interface CriarAtividadeModalProps {
 }
 
 const materias = ['Matemática', 'Português', 'Física', 'Química', 'Biologia', 'Geografia', 'História', 'Sociologia', 'Filosofia', 'Inglês', 'Arte', 'Educação Física'];
-const turmasDisponiveis = ['1º Ano A', '1º Ano B', '2º Ano A', '2º Ano B', '3º Ano A', '3º Ano B'];
 
 const CriarAtividadeModal = ({ isOpen, onClose, mode = 'audio' }: CriarAtividadeModalProps) => {
   const [step, setStep] = useState<'audio' | 'preview'>(mode === 'text' ? 'preview' : 'audio');
@@ -44,7 +43,8 @@ const CriarAtividadeModal = ({ isOpen, onClose, mode = 'audio' }: CriarAtividade
   const audioMimeRef = useRef('audio/webm');
   const recordingIntervalRef = useRef<number | null>(null);
   const { user } = useAuth();
-  const { addAtividade } = useData();
+  const { addAtividade, professorTurmas, professorTurmasError, isLoading } = useData();
+  const turmasDisponiveis = professorTurmas.filter(v => v.professorId === user?.id).map(v => v.turma);
 
   const [formData, setFormData] = useState({
     titulo: '',
@@ -292,8 +292,21 @@ const CriarAtividadeModal = ({ isOpen, onClose, mode = 'audio' }: CriarAtividade
     setFormData({ ...formData, questoes: updatedQuestoes });
   };
 
+  const validarVinculos = () => {
+    if (isLoading || professorTurmasError) {
+      toast.error('Aguarde o carregamento das turmas ou atualize os dados antes de salvar.');
+      return false;
+    }
+    if (formData.turmas.some(turma => !turmasDisponiveis.includes(turma))) {
+      toast.error('Os vínculos de turmas mudaram. Atualize os dados antes de salvar.');
+      return false;
+    }
+    return true;
+  };
+
   const handlePublicar = async () => {
     if (!user) return;
+    if (!validarVinculos()) return;
 
     const validationError = validateAtividade(formData);
     if (validationError) {
@@ -328,6 +341,7 @@ const CriarAtividadeModal = ({ isOpen, onClose, mode = 'audio' }: CriarAtividade
 
   const handleRascunho = async () => {
     if (!user) return;
+    if (!validarVinculos()) return;
 
     setIsSubmitting(true);
     try {
@@ -473,6 +487,12 @@ const CriarAtividadeModal = ({ isOpen, onClose, mode = 'audio' }: CriarAtividade
 
             <div>
               <Label>Turmas *</Label>
+              {(isLoading || professorTurmasError || turmasDisponiveis.length === 0) && (
+                <p className="mt-2 text-sm text-muted-foreground">
+                  {isLoading ? 'Carregando turmas...' : professorTurmasError ||
+                    'Peça ao administrador para atribuir suas turmas. Você pode salvar um rascunho sem turma.'}
+                </p>
+              )}
               <div className="grid grid-cols-3 gap-2 mt-2">
                 {turmasDisponiveis.map(turma => (
                   <Button
@@ -480,6 +500,7 @@ const CriarAtividadeModal = ({ isOpen, onClose, mode = 'audio' }: CriarAtividade
                     type="button"
                     variant={formData.turmas.includes(turma) ? 'default' : 'outline'}
                     size="sm"
+                    disabled={isLoading || Boolean(professorTurmasError) || isSubmitting}
                     onClick={() => {
                       if (formData.turmas.includes(turma)) {
                         setFormData({ ...formData, turmas: formData.turmas.filter(t => t !== turma) });

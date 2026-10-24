@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Plus, Trash2, Edit2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useData } from '@/contexts/DataContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { Atividade, Questao } from '@/types';
 import { validateAtividade } from '@/lib/atividadeValidation';
 
@@ -18,12 +19,13 @@ interface EditarAtividadeModalProps {
 }
 
 const materias = ['Matemática', 'Português', 'Física', 'Química', 'Biologia', 'Geografia', 'História', 'Sociologia', 'Filosofia', 'Inglês', 'Arte', 'Educação Física'];
-const turmasDisponiveis = ['1º Ano A', '1º Ano B', '2º Ano A', '2º Ano B', '3º Ano A', '3º Ano B'];
 
 const EditarAtividadeModal = ({ isOpen, onClose, atividade }: EditarAtividadeModalProps) => {
   const [editingQuestionIndex, setEditingQuestionIndex] = useState<number | null>(null);
   const [isSaving, setIsSaving] = useState(false);
-  const { updateAtividade } = useData();
+  const { user } = useAuth();
+  const { updateAtividade, professorTurmas, professorTurmasError, isLoading } = useData();
+  const turmasDisponiveis = professorTurmas.filter(v => v.professorId === user?.id).map(v => v.turma);
 
   const [formData, setFormData] = useState({
     titulo: '',
@@ -88,6 +90,14 @@ const EditarAtividadeModal = ({ isOpen, onClose, atividade }: EditarAtividadeMod
 
   const handleSalvar = async (publicar: boolean) => {
     if (!atividade) return;
+    if (isLoading || professorTurmasError) {
+      toast.error('Aguarde o carregamento das turmas ou atualize os dados antes de salvar.');
+      return;
+    }
+    if (formData.turmas.some(turma => !turmasDisponiveis.includes(turma))) {
+      toast.error('Esta atividade contém turmas que não estão mais atribuídas a você. Atualize os dados e consulte o administrador.');
+      return;
+    }
 
     if (publicar) {
       const validationError = validateAtividade(formData);
@@ -168,6 +178,17 @@ const EditarAtividadeModal = ({ isOpen, onClose, atividade }: EditarAtividadeMod
 
           <div>
             <Label>Turmas *</Label>
+            {(isLoading || professorTurmasError || turmasDisponiveis.length === 0) && (
+              <p className="mt-2 text-sm text-muted-foreground">
+                {isLoading ? 'Carregando turmas...' : professorTurmasError ||
+                  'Nenhuma turma atribuída. Consulte o administrador antes de publicar.'}
+              </p>
+            )}
+            {formData.turmas.some(turma => !turmasDisponiveis.includes(turma)) && (
+              <p className="mt-2 text-sm text-destructive">
+                Esta atividade possui turmas fora dos seus vínculos atuais. O administrador precisa verificar as atribuições antes da edição.
+              </p>
+            )}
             <div className="grid grid-cols-3 gap-2 mt-2">
               {turmasDisponiveis.map(turma => (
                 <Button
@@ -175,6 +196,7 @@ const EditarAtividadeModal = ({ isOpen, onClose, atividade }: EditarAtividadeMod
                   type="button"
                   variant={formData.turmas.includes(turma) ? 'default' : 'outline'}
                   size="sm"
+                  disabled={isLoading || Boolean(professorTurmasError) || isSaving}
                   onClick={() => {
                     if (formData.turmas.includes(turma)) {
                       setFormData({ ...formData, turmas: formData.turmas.filter(t => t !== turma) });
